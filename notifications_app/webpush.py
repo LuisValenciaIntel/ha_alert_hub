@@ -24,23 +24,35 @@ def _public_key_from_private_key(private_key_pem: str) -> str:
     return _base64url(public_key)
 
 
+def _generate_vapid_private_key() -> bytes:
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
+
 def ensure_vapid_keys(instance_path: Path, subject: str) -> dict[str, str]:
     instance_path.mkdir(parents=True, exist_ok=True)
     private_key_path = instance_path / "vapid_private_key.pem"
 
-    if not private_key_path.exists():
-        private_key = ec.generate_private_key(ec.SECP256R1())
-        private_key_pem = private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption(),
-        )
-        private_key_path.write_bytes(private_key_pem)
+    private_key_pem = None
+    if private_key_path.exists():
+        try:
+            private_key_pem = private_key_path.read_text(encoding="utf-8")
+            serialization.load_pem_private_key(private_key_pem.encode("utf-8"), password=None)
+        except Exception:
+            private_key_pem = None
 
-    private_key_pem = private_key_path.read_text(encoding="utf-8")
+    if private_key_pem is None:
+        private_key_pem = _generate_vapid_private_key().decode("utf-8")
+        private_key_path.write_text(private_key_pem, encoding="utf-8")
+
     return {
         "public_key": _public_key_from_private_key(private_key_pem),
         "private_key": private_key_pem,
+        "private_key_path": str(private_key_path),
         "subject": subject,
     }
 
@@ -57,7 +69,7 @@ def _load_pywebpush() -> tuple[Any | None, type[Exception]]:
 def send_web_push(
     *,
     subscription_info: dict[str, Any],
-    vapid_private_key: str,
+    vapid_private_key_path: str,
     vapid_subject: str,
     payload: dict[str, Any],
 ) -> bool:
@@ -71,7 +83,7 @@ def send_web_push(
         webpush_function(
             subscription_info=subscription_info,
             data=json.dumps(payload, separators=(",", ":"), ensure_ascii=False),
-            vapid_private_key=vapid_private_key,
+            vapid_private_key=vapid_private_key_path,
             vapid_claims={"sub": vapid_subject},
             ttl=300,
         )

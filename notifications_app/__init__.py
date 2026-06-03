@@ -98,6 +98,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     vapid_keys = ensure_vapid_keys(resolved_instance_path, vapid_subject)
     app.config["VAPID_PUBLIC_KEY"] = vapid_keys["public_key"]
     app.config["VAPID_PRIVATE_KEY"] = vapid_keys["private_key"]
+    app.config["VAPID_PRIVATE_KEY_PATH"] = vapid_keys["private_key_path"]
 
     def login_required(view):
         @wraps(view)
@@ -169,7 +170,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             try:
                 was_sent = send_web_push(
                     subscription_info=subscription,
-                    vapid_private_key=app.config["VAPID_PRIVATE_KEY"],
+                    vapid_private_key_path=app.config["VAPID_PRIVATE_KEY_PATH"],
                     vapid_subject=app.config["VAPID_SUBJECT"],
                     payload=payload,
                 )
