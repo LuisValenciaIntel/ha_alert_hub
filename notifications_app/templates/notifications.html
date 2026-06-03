@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}Notifications · {{ app_name }}{% endblock %}
+{% block body %}
+<main class="app-shell" data-poll-interval="{{ poll_interval_ms }}">
+    <header class="topbar">
+        <div>
+            <p class="eyebrow">Logged in as {{ username }}</p>
+            <h1>{{ app_name }}</h1>
+            <p class="muted">Alerts from Home Assistant with text and camera snapshots.</p>
+        </div>
+        <div class="actions">
+            <button type="button" id="install-app" class="btn btn-secondary" hidden>Install app</button>
+            <button type="button" id="enable-notifications" class="btn btn-primary">Enable notifications</button>
+            <a href="{{ url_for('logout') }}" class="btn btn-ghost">Log out</a>
+        </div>
+    </header>
+
+    <section class="panel status-panel">
+        <p id="notification-status" class="muted">Push notification status: not enabled yet.</p>
+    </section>
+
+    <section class="notifications-grid" id="notifications-list">
+        {% for item in notifications %}
+            <article class="panel notification-card" data-notification-id="{{ item.id }}">
+                <div class="notification-meta">
+                    <span class="badge">{{ item.source }}</span>
+                    <time datetime="{{ item.created_at }}">{{ item.created_at }}</time>
+                </div>
+                <h2>{{ item.title }}</h2>
+                {% if item.message %}
+                    <p>{{ item.message }}</p>
+                {% endif %}
+                {% if item.image %}
+                    <img src="{{ item.image }}" alt="Notification image for {{ item.title }}" loading="lazy">
+                {% endif %}
+            </article>
+        {% else %}
+            <article class="panel empty-state">
+                <h2>No alerts yet</h2>
+                <p>Use the Home Assistant automation endpoint to start sending notifications.</p>
+            </article>
+        {% endfor %}
+    </section>
+</main>
+{% endblock %}
+

@@ -1,0 +1,231 @@
+:root {
+    color-scheme: dark;
+    --bg: #020617;
+    --panel: #0f172a;
+    --panel-soft: #111827;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --primary: #38bdf8;
+    --primary-strong: #0ea5e9;
+    --outline: rgba(148, 163, 184, 0.18);
+    --danger: #f87171;
+    font-family: Inter, Arial, Helvetica, sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: radial-gradient(circle at top, #0f172a, #020617 55%);
+    color: var(--text);
+    min-height: 100vh;
+}
+
+img {
+    max-width: 100%;
+    display: block;
+}
+
+a {
+    color: inherit;
+}
+
+h1, h2, p {
+    margin-top: 0;
+}
+
+.auth-shell,
+.app-shell {
+    width: min(1120px, calc(100% - 2rem));
+    margin: 0 auto;
+    padding: 2rem 0 3rem;
+}
+
+.auth-shell {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+}
+
+.auth-card,
+.panel {
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid var(--outline);
+    border-radius: 24px;
+    box-shadow: 0 24px 70px rgba(2, 6, 23, 0.45);
+    backdrop-filter: blur(8px);
+}
+
+.auth-card {
+    width: min(460px, 100%);
+    padding: 2rem;
+}
+
+.eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.78rem;
+    color: var(--primary);
+    margin-bottom: 0.8rem;
+}
+
+.muted {
+    color: var(--muted);
+}
+
+.auth-form {
+    display: grid;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+label {
+    display: grid;
+    gap: 0.5rem;
+    font-weight: 600;
+}
+
+input {
+    border: 1px solid var(--outline);
+    border-radius: 16px;
+    padding: 0.9rem 1rem;
+    background: rgba(15, 23, 42, 0.7);
+    color: var(--text);
+    font: inherit;
+}
+
+.btn {
+    appearance: none;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0.85rem 1.1rem;
+    font: inherit;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 140ms ease, opacity 140ms ease, background 140ms ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+    color: #082f49;
+}
+
+.btn-secondary {
+    background: rgba(14, 165, 233, 0.12);
+    border-color: rgba(56, 189, 248, 0.24);
+    color: var(--text);
+}
+
+.btn-ghost {
+    background: transparent;
+    border-color: var(--outline);
+    color: var(--text);
+}
+
+.flash-group {
+    margin-top: 1rem;
+}
+
+.flash {
+    padding: 0.85rem 1rem;
+    border-radius: 14px;
+}
+
+.flash-error {
+    background: rgba(248, 113, 113, 0.16);
+    border: 1px solid rgba(248, 113, 113, 0.35);
+    color: #fecaca;
+}
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: flex-end;
+}
+
+.status-panel {
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.notifications-grid {
+    display: grid;
+    gap: 1rem;
+}
+
+.notification-card,
+.empty-state {
+    padding: 1.25rem;
+}
+
+.notification-card img {
+    margin-top: 1rem;
+    border-radius: 18px;
+    border: 1px solid var(--outline);
+    max-height: 420px;
+    object-fit: cover;
+    width: 100%;
+    background: #020617;
+}
+
+.notification-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: center;
+    margin-bottom: 0.9rem;
+    color: var(--muted);
+    font-size: 0.92rem;
+}
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    background: rgba(56, 189, 248, 0.14);
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+@media (max-width: 760px) {
+    .app-shell,
+    .auth-shell {
+        width: min(100% - 1rem, 1120px);
+    }
+
+    .topbar {
+        flex-direction: column;
+    }
+
+    .actions {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .actions .btn {
+        width: 100%;
+        text-align: center;
+    }
+}
+

@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Login · {{ app_name }}{% endblock %}
+{% block body %}
+<main class="auth-shell">
+    <section class="auth-card">
+        <div>
+            <p class="eyebrow">Installable mobile web app</p>
+            <h1>{{ app_name }}</h1>
+            <p class="muted">Sign in to view your Home Assistant alerts and enable push notifications on your phone.</p>
+        </div>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="flash-group">
+                    {% for message in messages %}
+                        <p class="flash flash-error">{{ message }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form method="post" class="auth-form">
+            <label>
+                Username
+                <input type="text" name="username" autocomplete="username" required>
+            </label>
+            <label>
+                Password
+                <input type="password" name="password" autocomplete="current-password" required>
+            </label>
+            <button type="submit" class="btn btn-primary">Sign in</button>
+        </form>
+    </section>
+</main>
+{% endblock %}
+

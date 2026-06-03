@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+instance/
+instance_smoke/
+media/
+media_smoke/
+.git/
+.venv/
+venv/
+.env
+

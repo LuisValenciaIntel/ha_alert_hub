@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="{{ url_for('manifest') }}">
+    <link rel="icon" href="{{ url_for('static', filename='icons/icon-192.svg') }}" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.svg') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>{% block title %}{{ app_name }}{% endblock %}</title>
+</head>
+<body>
+    {% block body %}{% endblock %}
+    <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</body>
+</html>
+
