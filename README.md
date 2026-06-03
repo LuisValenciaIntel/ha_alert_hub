@@ -8,15 +8,15 @@ Installable mobile-friendly web app for Home Assistant alerts.
 - Notification feed with text and optional images.
 - Home Assistant ingestion endpoint for alerts and camera snapshots.
 - Progressive Web App (PWA) support with manifest and service worker.
-- Browser push notifications after the user signs in and enables notifications.
-- SQLite storage for users, alerts, and push subscriptions.
+- Browser notifications shown in the app after the user grants permission.
+- SQLite storage for users and alerts.
 
 ## Project layout
 
 - `app.py` - runner and admin/token helper commands.
 - `notifications_app/__init__.py` - Flask app factory and routes.
 - `notifications_app/db.py` - SQLite schema and data access.
-- `notifications_app/webpush.py` - VAPID key generation and Web Push delivery.
+- `notifications_app/webpush.py` - legacy helper module kept for reference.
 - `notifications_app/templates/` - login and notification views.
 - `notifications_app/static/` - PWA assets, styles, and client-side logic.
 - `tests/test_app.py` - basic app tests.
@@ -30,7 +30,7 @@ python -m pip install -r requirements.txt
 
 ## Option 1: Run with Docker
 
-Copy the sample environment file and update the values you want to use:
+The Docker build no longer requires a local `.env` file. If you want to override defaults, you can optionally copy the sample environment file and edit it:
 
 ```cmd
 cd C:\projects\ipss\repos\notifications_page
@@ -89,7 +89,9 @@ Open the app in your browser:
 http://127.0.0.1:5000
 ```
 
-After logging in on your phone, tap **Enable notifications**. If your browser supports install prompts, tap **Install app** to add it to the home screen.
+After logging in on your phone, tap **Enable browser notifications**. If your browser supports install prompts, tap **Install app** to add it to the home screen.
+
+Browser notifications are now delivered by the page itself when it polls for new alerts, so there is no `pywebpush` or VAPID setup required.
 
 ## Send alerts from Home Assistant
 
@@ -268,7 +270,6 @@ APP_ADMIN_USERNAME=admin
 APP_ADMIN_PASSWORD=ChangeMe123!
 HOME_ASSISTANT_API_TOKEN=replace-with-your-token-or-leave-empty-for-auto-generation
 PUBLIC_BASE_URL=https://alerts.example.com
-VAPID_SUBJECT=mailto:alerts@example.com
 POLL_INTERVAL_SECONDS=20
 ```
 

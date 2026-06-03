@@ -7,11 +7,62 @@ function escapeHtml(value) {
         .replace(/'/g, "&#039;");
 }
 
-function urlBase64ToUint8Array(base64String) {
-    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-    const rawData = atob(base64);
-    return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+const LAST_NOTIFICATION_ID_KEY = "home-alert-hub:last-notification-id";
+
+function supportsBrowserNotifications() {
+    return "Notification" in window;
+}
+
+function getStoredNotificationId() {
+    return Number(window.localStorage.getItem(LAST_NOTIFICATION_ID_KEY) || "0");
+}
+
+function setStoredNotificationId(notificationId) {
+    if (notificationId > 0) {
+        window.localStorage.setItem(LAST_NOTIFICATION_ID_KEY, String(notificationId));
+    }
+}
+
+function setNotificationStatus(message, buttonText = null, disabled = false) {
+    const statusNode = document.getElementById("notification-status");
+    const buttonNode = document.getElementById("enable-notifications");
+    if (statusNode) {
+        statusNode.textContent = message;
+    }
+    if (buttonNode && buttonText !== null) {
+        buttonNode.textContent = buttonText;
+        buttonNode.disabled = disabled;
+    }
+}
+
+function showBrowserNotification(item) {
+    if (!supportsBrowserNotifications() || Notification.permission !== "granted") {
+        return;
+    }
+
+    const options = {
+        body: item.message || "A new Home Assistant notification is available.",
+        icon: "/static/icons/icon-192.svg",
+        badge: "/static/icons/badge.svg",
+        image: item.image || undefined,
+        tag: `alert-${item.id}`,
+        renotify: true,
+        data: {
+            url: "/notifications",
+            notificationId: item.id,
+        },
+    };
+
+    try {
+        const notification = new Notification(item.title || "New alert", options);
+        notification.onclick = () => {
+            window.focus();
+            window.location.href = "/notifications";
+            notification.close();
+        };
+    } catch (error) {
+        console.warn("Could not display browser notification", error);
+    }
 }
 
 function renderNotificationCard(item) {
@@ -48,78 +99,27 @@ async function fetchNotifications() {
     return response.json();
 }
 
-async function syncSubscription(registration) {
-    const statusNode = document.getElementById("notification-status");
-    const subscribeButton = document.getElementById("enable-notifications");
-
-    if (!("PushManager" in window) || !("Notification" in window)) {
-        statusNode.textContent = "Push notifications are not supported on this device/browser.";
-        subscribeButton.disabled = true;
-        return;
-    }
-
-    if (Notification.permission === "denied") {
-        statusNode.textContent = "Push notifications were blocked in the browser settings.";
-        subscribeButton.disabled = true;
-        return;
-    }
-
-    const existingSubscription = await registration.pushManager.getSubscription();
-    if (existingSubscription) {
-        statusNode.textContent = "Push notification status: enabled.";
-        subscribeButton.textContent = "Notifications enabled";
-        subscribeButton.disabled = true;
-    }
-}
-
 async function enableNotifications() {
-    const statusNode = document.getElementById("notification-status");
-    const subscribeButton = document.getElementById("enable-notifications");
+    if (!supportsBrowserNotifications()) {
+        setNotificationStatus("Browser notifications are not supported on this device/browser.", "Notifications unavailable", true);
+        return;
+    }
 
     try {
-        const registration = await registerServiceWorker();
-        if (!registration) {
-            statusNode.textContent = "Push notification status: service workers are not supported here.";
-            return;
-        }
-
         const permission = await Notification.requestPermission();
-        if (permission !== "granted") {
-            statusNode.textContent = "Push notification status: permission was not granted.";
+        if (permission === "granted") {
+            setNotificationStatus("Browser notifications are enabled.", "Notifications enabled", true);
             return;
         }
 
-        const keyResponse = await fetch("/api/push/public-key", { headers: { Accept: "application/json" } });
-        if (!keyResponse.ok) {
-            statusNode.textContent = "Push notification status: could not fetch the push key.";
-            return;
-        }
-        const { publicKey } = await keyResponse.json();
-        const applicationServerKey = urlBase64ToUint8Array(publicKey);
-
-        let subscription = await registration.pushManager.getSubscription();
-        if (!subscription) {
-            subscription = await registration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey,
-            });
-        }
-
-        const response = await fetch("/api/push/subscribe", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(subscription),
-        });
-        if (!response.ok) {
-            statusNode.textContent = "Push notification status: could not save the push subscription.";
+        if (permission === "denied") {
+            setNotificationStatus("Browser notifications were blocked in the browser settings.", "Notifications blocked", true);
             return;
         }
 
-        statusNode.textContent = "Push notification status: enabled.";
-        subscribeButton.textContent = "Notifications enabled";
-        subscribeButton.disabled = true;
+        setNotificationStatus("Browser notification permission was not granted.", "Enable notifications", false);
     } catch (error) {
-        statusNode.textContent = `Push notification status: ${error.message}`;
+        setNotificationStatus(`Browser notification status: ${error.message}`, "Enable notifications", false);
     }
 }
 
@@ -159,14 +159,45 @@ async function startNotificationsPage() {
         subscribeButton.addEventListener("click", enableNotifications);
     }
 
-    const registration = await registerServiceWorker();
-    if (registration) {
-        await syncSubscription(registration);
+    await registerServiceWorker();
+
+    if (supportsBrowserNotifications()) {
+        if (Notification.permission === "granted") {
+            setNotificationStatus("Browser notifications are enabled.", "Notifications enabled", true);
+        } else if (Notification.permission === "denied") {
+            setNotificationStatus("Browser notifications were blocked in the browser settings.", "Notifications blocked", true);
+        } else {
+            setNotificationStatus("Browser notifications are off. Tap the button to enable them.", "Enable notifications", false);
+        }
+    } else {
+        setNotificationStatus("Browser notifications are not supported on this device/browser.", "Notifications unavailable", true);
     }
 
     const shellNode = document.querySelector(".app-shell");
     const pollInterval = Number(shellNode?.dataset.pollInterval || "20000");
-    let latestNotificationId = Number(listNode.querySelector("[data-notification-id]")?.dataset.notificationId || "0");
+    const initialDomLatest = Number(listNode.querySelector("[data-notification-id]")?.dataset.notificationId || "0");
+    let latestNotificationId = Math.max(getStoredNotificationId(), initialDomLatest);
+    if (latestNotificationId > 0) {
+        setStoredNotificationId(latestNotificationId);
+    }
+
+    const initialNotifications = Array.from(listNode.querySelectorAll("[data-notification-id]"));
+    if (!initialNotifications.length) {
+        try {
+            const payload = await fetchNotifications();
+            const items = payload.notifications || [];
+            if (items.length) {
+                latestNotificationId = Math.max(latestNotificationId, Number(items[0]?.id || "0"));
+                setStoredNotificationId(latestNotificationId);
+                listNode.innerHTML = items.map(renderNotificationCard).join("");
+            }
+        } catch (error) {
+            const statusNode = document.getElementById("notification-status");
+            if (statusNode) {
+                statusNode.textContent = `Live refresh warning: ${error.message}`;
+            }
+        }
+    }
 
     const refresh = async () => {
         try {
@@ -174,7 +205,12 @@ async function startNotificationsPage() {
             const items = payload.notifications || [];
             const newestId = Number(items[0]?.id || "0");
             if (newestId && newestId !== latestNotificationId) {
+                const unseenItems = items
+                    .filter((item) => Number(item.id || "0") > latestNotificationId)
+                    .sort((left, right) => Number(left.id || "0") - Number(right.id || "0"));
+
                 latestNotificationId = newestId;
+                setStoredNotificationId(latestNotificationId);
                 listNode.innerHTML = items.length
                     ? items.map(renderNotificationCard).join("")
                     : `
@@ -183,6 +219,10 @@ async function startNotificationsPage() {
                             <p>Use the Home Assistant automation endpoint to start sending notifications.</p>
                         </article>
                     `;
+
+                for (const item of unseenItems) {
+                    showBrowserNotification(item);
+                }
             }
         } catch (error) {
             const statusNode = document.getElementById("notification-status");

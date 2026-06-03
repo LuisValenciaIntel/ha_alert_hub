@@ -11,7 +11,6 @@ services:
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:-ChangeMe123!}
       HOME_ASSISTANT_API_TOKEN: ${HOME_ASSISTANT_API_TOKEN:-}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://127.0.0.1:5000}
-      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:alerts@example.com}
       POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-20}
     volumes:
       - ./instance:/app/instance

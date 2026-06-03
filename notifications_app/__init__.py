@@ -22,10 +22,8 @@ from flask import (
 )
 
 from . import db
-from .webpush import send_web_push, ensure_vapid_keys
 
 DEFAULT_APP_NAME = "Home Alert Hub"
-DEFAULT_VAPID_SUBJECT = "mailto:alerts@example.com"
 IMAGE_EXTENSIONS = {
     "image/jpeg": "jpg",
     "image/jpg": "jpg",
@@ -38,7 +36,7 @@ IMAGE_EXTENSIONS = {
 def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     base_path = Path(__file__).resolve().parents[1]
     configured_instance_path = test_config.get("INSTANCE_PATH") if test_config else None
-    instance_path = Path(configured_instance_path) if configured_instance_path else base_path / "instance"
+    instance_path = Path(str(configured_instance_path)) if configured_instance_path is not None else base_path / "instance"
 
     app = Flask(
         __name__,
@@ -55,7 +53,6 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         MEDIA_DIR=base_path / "media",
         POLL_INTERVAL_SECONDS=int(os.getenv("POLL_INTERVAL_SECONDS", "20")),
         PUBLIC_BASE_URL=os.getenv("PUBLIC_BASE_URL", "").rstrip("/"),
-        VAPID_SUBJECT=os.getenv("VAPID_SUBJECT", DEFAULT_VAPID_SUBJECT),
         HOME_ASSISTANT_API_TOKEN=os.getenv("HOME_ASSISTANT_API_TOKEN", ""),
         BOOTSTRAP_ADMIN_USERNAME=os.getenv("APP_ADMIN_USERNAME", ""),
         BOOTSTRAP_ADMIN_PASSWORD=os.getenv("APP_ADMIN_PASSWORD", ""),
@@ -93,12 +90,6 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         print(
             f"[notifications_page] Automation token generated and stored at {token_info['token_file']}"
         )
-
-    vapid_subject = str(app.config.get("VAPID_SUBJECT", DEFAULT_VAPID_SUBJECT))
-    vapid_keys = ensure_vapid_keys(resolved_instance_path, vapid_subject)
-    app.config["VAPID_PUBLIC_KEY"] = vapid_keys["public_key"]
-    app.config["VAPID_PRIVATE_KEY"] = vapid_keys["private_key"]
-    app.config["VAPID_PRIVATE_KEY_PATH"] = vapid_keys["private_key_path"]
 
     def login_required(view):
         @wraps(view)
@@ -143,45 +134,6 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             mime_type = header.split(":", 1)[1].split(";", 1)[0]
         image_bytes = base64.b64decode(value, validate=True)
         return save_image_bytes(image_bytes, mime_type)
-
-    def build_notification_payload(notification: dict[str, Any]) -> dict[str, Any]:
-        app_url = str(app.config.get("PUBLIC_BASE_URL") or request.url_root.rstrip("/"))
-        image_url = str(notification.get("image") or "") or None
-        if image_url and image_url.startswith("/"):
-            image_url = app_url + image_url
-
-        return {
-            "title": notification["title"],
-            "body": notification["message"] or "New home alert received",
-            "icon": app_url + "/static/icons/icon-192.svg",
-            "badge": app_url + "/static/icons/badge.svg",
-            "image": image_url,
-            "url": app_url + url_for("notifications_page"),
-            "tag": f"alert-{notification['id']}",
-            "notificationId": notification["id"],
-        }
-
-    def broadcast_notification(notification: dict[str, Any]) -> None:
-        subscriptions = db.list_subscriptions(database_path)
-        stale_endpoints: list[str] = []
-        payload = build_notification_payload(notification)
-
-        for subscription in subscriptions:
-            try:
-                was_sent = send_web_push(
-                    subscription_info=subscription,
-                    vapid_private_key_path=app.config["VAPID_PRIVATE_KEY_PATH"],
-                    vapid_subject=app.config["VAPID_SUBJECT"],
-                    payload=payload,
-                )
-                if not was_sent:
-                    stale_endpoints.append(str(subscription.get("endpoint", "")))
-            except Exception as exc:
-                print(f"[notifications_page] Push delivery failed: {exc}")
-
-        for endpoint in stale_endpoints:
-            if endpoint:
-                db.delete_subscription(database_path, endpoint)
 
     def extract_notification_request() -> dict[str, Any]:
         title = ""
@@ -273,34 +225,12 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         limit = int(request.args.get("limit", 50))
         return jsonify({"notifications": db.list_notifications(database_path, limit=limit)})
 
-    @app.get("/api/push/public-key")
-    @login_required
-    def api_push_public_key():
-        return jsonify({"publicKey": app.config["VAPID_PUBLIC_KEY"]})
-
-    @app.post("/api/push/subscribe")
-    @login_required
-    def api_push_subscribe():
-        subscription = request.get_json(silent=True) or {}
-        db.upsert_subscription(database_path, subscription)
-        return jsonify({"ok": True})
-
-    @app.post("/api/push/unsubscribe")
-    @login_required
-    def api_push_unsubscribe():
-        payload = request.get_json(silent=True) or {}
-        endpoint = str(payload.get("endpoint") or "").strip()
-        if endpoint:
-            db.delete_subscription(database_path, endpoint)
-        return jsonify({"ok": True})
-
     @app.post("/api/ingest")
     def api_ingest():
         require_ingest_token()
         try:
             payload = extract_notification_request()
             notification = db.create_notification(database_path, **payload)
-            broadcast_notification(notification)
             return jsonify({"ok": True, "notification": notification}), 201
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400

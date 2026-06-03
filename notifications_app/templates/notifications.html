@@ -10,13 +10,13 @@
         </div>
         <div class="actions">
             <button type="button" id="install-app" class="btn btn-secondary" hidden>Install app</button>
-            <button type="button" id="enable-notifications" class="btn btn-primary">Enable notifications</button>
+            <button type="button" id="enable-notifications" class="btn btn-primary">Enable browser notifications</button>
             <a href="{{ url_for('logout') }}" class="btn btn-ghost">Log out</a>
         </div>
     </header>
 
     <section class="panel status-panel">
-        <p id="notification-status" class="muted">Push notification status: not enabled yet.</p>
+        <p id="notification-status" class="muted">Browser notification status: not enabled yet.</p>
     </section>
 
     <section class="notifications-grid" id="notifications-list">
@@ -37,7 +37,7 @@
         {% else %}
             <article class="panel empty-state">
                 <h2>No alerts yet</h2>
-                <p>Use the Home Assistant automation endpoint to start sending notifications.</p>
+                <p>Use the Home Assistant automation endpoint to start sending alerts.</p>
             </article>
         {% endfor %}
     </section>
