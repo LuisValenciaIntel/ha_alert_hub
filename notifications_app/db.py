@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 
 
 def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.now().replace(microsecond=0).isoformat()
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
