@@ -97,6 +97,37 @@ Browser notifications are now delivered by the page itself when it polls for new
 
 Use the generated automation token as either `Authorization: Bearer <token>` or `X-API-Key: <token>`.
 
+## Trigger a Home Assistant automation from the app
+
+If you want a button inside the notifications page that calls a Home Assistant automation, set these environment variables:
+
+```env
+HOME_ASSISTANT_BASE_URL=http://YOUR_HOME_ASSISTANT_IP:8123
+HOME_ASSISTANT_ACCESS_TOKEN=YOUR_LONG_LIVED_ACCESS_TOKEN
+HOME_ASSISTANT_AUTOMATION_ENTITY_ID=automation.your_automation_id
+HOME_ASSISTANT_BUTTON_LABEL=Run camera automation
+```
+
+Then the page will show a button that sends a request to Home Assistant and triggers the configured automation.
+
+Example Home Assistant service call that can be triggered:
+
+```yaml
+automation:
+  - id: your_automation_id
+    alias: Your camera automation
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.movimiento_entrada
+        to: "on"
+    action:
+      - service: camera.snapshot
+        target:
+          entity_id: camera.entrada
+        data:
+          filename: "/config/www/snapshots/entrada.jpg"
+```
+
 ### JSON message example
 
 ```cmd

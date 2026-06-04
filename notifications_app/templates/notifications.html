@@ -9,6 +9,9 @@
             <p class="muted">Alerts from Home Assistant with text and camera snapshots.</p>
         </div>
         <div class="actions">
+            {% if home_assistant_trigger_ready %}
+            <button type="button" id="trigger-home-assistant" class="btn btn-secondary" data-entity-id="{{ home_assistant_automation_entity_id }}">{{ home_assistant_button_label }}</button>
+            {% endif %}
             <button type="button" id="install-app" class="btn btn-secondary" hidden>Install app</button>
             <button type="button" id="enable-notifications" class="btn btn-primary">Enable browser notifications</button>
             <a href="{{ url_for('logout') }}" class="btn btn-ghost">Log out</a>
@@ -17,6 +20,7 @@
 
     <section class="panel status-panel">
         <p id="notification-status" class="muted">Browser notification status: not enabled yet.</p>
+        <p id="home-assistant-status" class="muted"></p>
     </section>
 
     <section class="notifications-grid" id="notifications-list">

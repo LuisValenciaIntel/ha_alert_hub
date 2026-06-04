@@ -35,6 +35,14 @@ function setNotificationStatus(message, buttonText = null, disabled = false) {
     }
 }
 
+function setHomeAssistantStatus(message, isError = false) {
+    const statusNode = document.getElementById("home-assistant-status");
+    if (statusNode) {
+        statusNode.textContent = message;
+        statusNode.classList.toggle("error", isError);
+    }
+}
+
 function showBrowserNotification(item) {
     if (!supportsBrowserNotifications() || Notification.permission !== "granted") {
         return;
@@ -99,6 +107,40 @@ async function fetchNotifications() {
     return response.json();
 }
 
+async function triggerHomeAssistantAutomation() {
+    const buttonNode = document.getElementById("trigger-home-assistant");
+    if (!buttonNode) {
+        return;
+    }
+
+    const entityId = buttonNode.dataset.entityId || "";
+    if (!entityId) {
+        setHomeAssistantStatus("Home Assistant automation entity_id is not configured.", true);
+        return;
+    }
+
+    buttonNode.disabled = true;
+    setHomeAssistantStatus("Sending the automation trigger to Home Assistant...");
+
+    try {
+        const response = await fetch("/api/home-assistant/trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ entity_id: entityId }),
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+            throw new Error(payload.error || "Could not trigger Home Assistant automation");
+        }
+
+        setHomeAssistantStatus("Home Assistant automation triggered successfully.");
+    } catch (error) {
+        setHomeAssistantStatus(`Home Assistant trigger error: ${error.message}`, true);
+    } finally {
+        buttonNode.disabled = false;
+    }
+}
+
 async function enableNotifications() {
     if (!supportsBrowserNotifications()) {
         setNotificationStatus("Browser notifications are not supported on this device/browser.", "Notifications unavailable", true);
@@ -154,6 +196,10 @@ async function startNotificationsPage() {
     }
 
     attachInstallPrompt();
+    const haButton = document.getElementById("trigger-home-assistant");
+    if (haButton) {
+        haButton.addEventListener("click", triggerHomeAssistantAutomation);
+    }
     const subscribeButton = document.getElementById("enable-notifications");
     if (subscribeButton) {
         subscribeButton.addEventListener("click", enableNotifications);

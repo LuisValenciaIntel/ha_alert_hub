@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import secrets
 import re
@@ -77,6 +78,10 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         POLL_INTERVAL_SECONDS=int(os.getenv("POLL_INTERVAL_SECONDS", "20")),
         PUBLIC_BASE_URL=os.getenv("PUBLIC_BASE_URL", "").rstrip("/"),
         HOME_ASSISTANT_API_TOKEN=os.getenv("HOME_ASSISTANT_API_TOKEN", ""),
+        HOME_ASSISTANT_BASE_URL=os.getenv("HOME_ASSISTANT_BASE_URL", "").rstrip("/"),
+        HOME_ASSISTANT_ACCESS_TOKEN=os.getenv("HOME_ASSISTANT_ACCESS_TOKEN", ""),
+        HOME_ASSISTANT_AUTOMATION_ENTITY_ID=os.getenv("HOME_ASSISTANT_AUTOMATION_ENTITY_ID", ""),
+        HOME_ASSISTANT_BUTTON_LABEL=os.getenv("HOME_ASSISTANT_BUTTON_LABEL", "Run Home Assistant automation"),
         BOOTSTRAP_ADMIN_USERNAME=os.getenv("APP_ADMIN_USERNAME", ""),
         BOOTSTRAP_ADMIN_PASSWORD=os.getenv("APP_ADMIN_PASSWORD", ""),
         SESSION_COOKIE_HTTPONLY=True,
@@ -170,6 +175,34 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         except URLError as exc:
             raise ValueError(f"Could not download image_url: {exc.reason}") from exc
 
+    def trigger_home_assistant_automation(entity_id: str) -> None:
+        base_url = str(app.config.get("HOME_ASSISTANT_BASE_URL", "")).strip().rstrip("/")
+        access_token = str(app.config.get("HOME_ASSISTANT_ACCESS_TOKEN", "")).strip()
+        if not base_url:
+            raise ValueError("Home Assistant base URL is not configured")
+        if not access_token:
+            raise ValueError("Home Assistant access token is not configured")
+        if not entity_id.strip():
+            raise ValueError("Home Assistant automation entity_id is required")
+
+        endpoint = f"{base_url}/api/services/automation/trigger"
+        payload = json.dumps({"entity_id": entity_id.strip()}, separators=(",", ":")).encode("utf-8")
+        request_headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "User-Agent": "Home-Alert-Hub/1.0",
+        }
+
+        try:
+            with urlopen(Request(endpoint, data=payload, headers=request_headers, method="POST"), timeout=15) as response:
+                response.read()
+                if response.status >= 400:
+                    raise ValueError(f"Home Assistant returned HTTP {response.status}")
+        except HTTPError as exc:
+            raise ValueError(f"Home Assistant returned HTTP {exc.code}") from exc
+        except URLError as exc:
+            raise ValueError(f"Could not reach Home Assistant: {exc.reason}") from exc
+
     def parse_image_base64(raw_value: str, mime_type: str | None) -> str:
         value = raw_value.strip()
         header = None
@@ -261,11 +294,20 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     @login_required
     def notifications_page():
         notifications = db.list_notifications(database_path)
+        automation_entity_id = str(app.config.get("HOME_ASSISTANT_AUTOMATION_ENTITY_ID", "")).strip()
+        ha_trigger_ready = bool(
+            str(app.config.get("HOME_ASSISTANT_BASE_URL", "")).strip()
+            and str(app.config.get("HOME_ASSISTANT_ACCESS_TOKEN", "")).strip()
+            and automation_entity_id
+        )
         return render_template(
             "notifications.html",
             notifications=notifications,
             username=session.get("username", ""),
             poll_interval_ms=int(app.config["POLL_INTERVAL_SECONDS"]) * 1000,
+            home_assistant_button_label=str(app.config.get("HOME_ASSISTANT_BUTTON_LABEL", "Run Home Assistant automation")),
+            home_assistant_trigger_ready=ha_trigger_ready,
+            home_assistant_automation_entity_id=automation_entity_id,
         )
 
     @app.get("/api/notifications")
@@ -273,6 +315,22 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     def api_notifications():
         limit = int(request.args.get("limit", 50))
         return jsonify({"notifications": db.list_notifications(database_path, limit=limit)})
+
+    @app.post("/api/home-assistant/trigger")
+    @login_required
+    def api_home_assistant_trigger():
+        payload = request.get_json(silent=True) or {}
+        entity_id = str(
+            payload.get("entity_id")
+            or app.config.get("HOME_ASSISTANT_AUTOMATION_ENTITY_ID", "")
+            or ""
+        ).strip()
+
+        try:
+            trigger_home_assistant_automation(entity_id)
+            return jsonify({"ok": True, "entity_id": entity_id}), 200
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
 
     @app.post("/api/ingest")
     def api_ingest():
