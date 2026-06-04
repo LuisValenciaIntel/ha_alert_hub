@@ -10,5 +10,4 @@ media_smoke/
 .git/
 .venv/
 venv/
-.env
 
