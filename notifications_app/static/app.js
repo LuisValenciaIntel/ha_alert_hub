@@ -130,11 +130,15 @@ async function triggerHomeAssistantAutomation() {
         });
         const payload = await response.json();
         if (!response.ok || !payload.ok) {
-            throw new Error(payload.error || "Could not trigger Home Assistant automation");
+            const errorMessage = payload.error || "Could not trigger Home Assistant automation";
+            console.error("Home Assistant trigger error", errorMessage);
+            setHomeAssistantStatus(`Home Assistant trigger error: ${errorMessage}`, true);
+            return;
         }
 
         setHomeAssistantStatus("Home Assistant automation triggered successfully.");
     } catch (error) {
+        console.error("Home Assistant trigger error", error);
         setHomeAssistantStatus(`Home Assistant trigger error: ${error.message}`, true);
     } finally {
         buttonNode.disabled = false;

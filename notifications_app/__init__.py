@@ -195,11 +195,16 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
         try:
             with urlopen(Request(endpoint, data=payload, headers=request_headers, method="POST"), timeout=15) as response:
-                response.read()
+                response_body = response.read().decode("utf-8", errors="ignore").strip()
                 if response.status >= 400:
-                    raise ValueError(f"Home Assistant returned HTTP {response.status}")
+                    detail = f": {response_body}" if response_body else ""
+                    raise ValueError(f"Home Assistant returned HTTP {response.status}{detail}")
         except HTTPError as exc:
-            raise ValueError(f"Home Assistant returned HTTP {exc.code}") from exc
+            error_body = ""
+            if exc.fp is not None:
+                error_body = exc.read().decode("utf-8", errors="ignore").strip()
+            detail = f": {error_body}" if error_body else ""
+            raise ValueError(f"Home Assistant returned HTTP {exc.code}{detail}") from exc
         except URLError as exc:
             raise ValueError(f"Could not reach Home Assistant: {exc.reason}") from exc
 
