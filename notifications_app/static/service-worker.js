@@ -1,4 +1,4 @@
-const CACHE_NAME = "home-alert-hub-v1";
+const CACHE_NAME = "home-alert-hub-v2";
 const CORE_ASSETS = [
     "/",
     "/login",

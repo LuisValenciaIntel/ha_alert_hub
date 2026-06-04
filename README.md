@@ -106,6 +106,8 @@ curl -X POST http://127.0.0.1:5000/api/ingest ^
   -d "{\"title\":\"Front Door\",\"message\":\"Motion detected\",\"source\":\"home-assistant\",\"image_url\":\"https://example.local/snapshot.jpg\"}"
 ```
 
+    When you send `image_url`, the backend downloads that image, saves it inside the LXC under `media/` with a custom filename, and the web page displays the saved local file.
+
 ### JSON with base64 image
 
 ```cmd

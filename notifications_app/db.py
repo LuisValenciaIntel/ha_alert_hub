@@ -166,9 +166,11 @@ def list_notifications(db_path: Path, limit: int = 50) -> list[dict[str, Any]]:
 
 
 def serialize_notification(row: sqlite3.Row) -> dict[str, Any]:
-    image = row["image_url"]
-    if not image and row["image_path"]:
+    image = None
+    if row["image_path"]:
         image = f"/media/{row['image_path']}"
+    elif row["image_url"]:
+        image = row["image_url"]
 
     return {
         "id": row["id"],

@@ -113,11 +113,11 @@ async function enableNotifications() {
         }
 
         if (permission === "denied") {
-            setNotificationStatus("Browser notifications were blocked in the browser settings.", "Notifications blocked", true);
+            setNotificationStatus("Browser notifications were blocked in the browser settings. Please allow notifications for this site, then tap the button again.", "Notifications blocked", true);
             return;
         }
 
-        setNotificationStatus("Browser notification permission was not granted.", "Enable notifications", false);
+        setNotificationStatus("Browser notification permission was not granted. No push subscription is required anymore.", "Enable notifications", false);
     } catch (error) {
         setNotificationStatus(`Browser notification status: ${error.message}`, "Enable notifications", false);
     }

@@ -3,10 +3,14 @@ from __future__ import annotations
 import base64
 import os
 import secrets
+import re
 import uuid
 from functools import wraps
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 from flask import (
     Flask,
@@ -31,6 +35,25 @@ IMAGE_EXTENSIONS = {
     "image/webp": "webp",
     "image/gif": "gif",
 }
+MAX_IMAGE_DOWNLOAD_BYTES = 10 * 1024 * 1024
+
+
+def slugify_filename(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or "alert"
+
+
+def guess_extension(image_url: str, mime_type: str | None = None) -> str:
+    if mime_type:
+        extension = IMAGE_EXTENSIONS.get(mime_type.lower())
+        if extension:
+            return extension
+
+    path_extension = Path(urlparse(image_url).path).suffix.lstrip(".").lower()
+    if path_extension in {"jpg", "jpeg", "png", "webp", "gif"}:
+        return "jpg" if path_extension == "jpeg" else path_extension
+
+    return "jpg"
 
 
 def create_app(test_config: dict[str, Any] | None = None) -> Flask:
@@ -125,6 +148,28 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         image_path.write_bytes(content)
         return filename
 
+    def save_downloaded_image(content: bytes, title: str, image_url: str, mime_type: str | None) -> str:
+        extension = guess_extension(image_url, mime_type)
+        slug = slugify_filename(title)
+        filename = f"{slug}-{uuid.uuid4().hex[:8]}.{extension}"
+        image_path = Path(app.config["MEDIA_DIR"]) / filename
+        image_path.write_bytes(content)
+        return filename
+
+    def download_image_from_url(image_url: str, title: str) -> str:
+        try:
+            request_headers = {"User-Agent": "Home-Alert-Hub/1.0"}
+            with urlopen(Request(image_url, headers=request_headers), timeout=15) as response:
+                content_type = response.headers.get_content_type()
+                content = response.read(MAX_IMAGE_DOWNLOAD_BYTES + 1)
+                if len(content) > MAX_IMAGE_DOWNLOAD_BYTES:
+                    raise ValueError("Downloaded image is too large")
+                return save_downloaded_image(content, title, image_url, content_type)
+        except HTTPError as exc:
+            raise ValueError(f"Could not download image_url: HTTP {exc.code}") from exc
+        except URLError as exc:
+            raise ValueError(f"Could not download image_url: {exc.reason}") from exc
+
     def parse_image_base64(raw_value: str, mime_type: str | None) -> str:
         value = raw_value.strip()
         header = None
@@ -152,6 +197,8 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             image_mime = str(payload.get("image_mime") or "").strip() or None
             if image_base64:
                 image_path = parse_image_base64(image_base64, image_mime)
+            elif image_url:
+                image_path = download_image_from_url(image_url, title or source)
         else:
             title = str(request.form.get("title") or request.form.get("source") or "Home alert").strip()
             message = str(request.form.get("message") or request.form.get("text") or "").strip()
@@ -160,6 +207,8 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             image_file = request.files.get("image")
             if image_file and image_file.filename:
                 image_path = save_image_bytes(image_file.read(), image_file.mimetype)
+            elif image_url:
+                image_path = download_image_from_url(image_url, title or source)
 
         if not title:
             title = "Home alert"
