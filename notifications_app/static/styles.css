@@ -87,7 +87,8 @@ label {
     font-weight: 600;
 }
 
-input {
+input,
+select {
     border: 1px solid var(--outline);
     border-radius: 16px;
     padding: 0.9rem 1rem;
@@ -144,6 +145,17 @@ input {
     color: #fecaca;
 }
 
+.flash-success {
+    background: rgba(52, 211, 153, 0.16);
+    border: 1px solid rgba(52, 211, 153, 0.35);
+    color: #bbf7d0;
+}
+
+.stack-gap {
+    display: grid;
+    gap: 0.75rem;
+}
+
 .topbar {
     display: flex;
     justify-content: space-between;
@@ -164,9 +176,82 @@ input {
     margin-bottom: 1rem;
 }
 
+.filters-panel {
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.filter-control {
+    max-width: 360px;
+}
+
+.filter-control span {
+    color: var(--muted);
+    font-size: 0.92rem;
+}
+
+.section-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
 .notifications-grid {
     display: grid;
     gap: 1rem;
+}
+
+.category-editor-panel,
+.category-list-panel {
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.category-form-grid {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.5fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) auto;
+    gap: 1rem;
+    align-items: end;
+}
+
+.category-form-actions {
+    display: flex;
+    align-items: end;
+    min-height: 100%;
+}
+
+.category-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.category-row {
+    padding-top: 1rem;
+    border-top: 1px solid var(--outline);
+}
+
+.category-row:first-child {
+    padding-top: 0;
+    border-top: 0;
+}
+
+.category-row-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.9rem;
+}
+
+.category-row-summary p {
+    margin-bottom: 0;
+}
+
+.category-row-form input[readonly] {
+    opacity: 0.86;
+    cursor: default;
 }
 
 .notification-card,
@@ -194,6 +279,12 @@ input {
     font-size: 0.92rem;
 }
 
+.notification-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
 .badge {
     display: inline-flex;
     align-items: center;
@@ -206,6 +297,20 @@ input {
     letter-spacing: 0.04em;
     font-size: 0.75rem;
     font-weight: 700;
+}
+
+.badge-category {
+    --category-color: #A78BFA;
+    --category-color-soft: rgba(167, 139, 250, 0.16);
+    --category-color-border: rgba(167, 139, 250, 0.35);
+    background: var(--category-color-soft);
+    color: var(--category-color);
+    border: 1px solid var(--category-color-border);
+}
+
+.badge-icon {
+    line-height: 1;
+    font-size: 0.95rem;
 }
 
 @media (max-width: 760px) {
@@ -226,6 +331,24 @@ input {
     .actions .btn {
         width: 100%;
         text-align: center;
+    }
+
+    .notification-meta {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .category-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .category-form-actions .btn {
+        width: 100%;
+    }
+
+    .category-row-summary {
+        flex-direction: column;
+        align-items: flex-start;
     }
 }
 

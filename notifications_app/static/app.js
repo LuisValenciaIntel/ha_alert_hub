@@ -8,6 +8,51 @@ function escapeHtml(value) {
 }
 
 const LAST_NOTIFICATION_ID_KEY = "home-alert-hub:last-notification-id";
+const ALL_CATEGORIES_VALUE = "__all__";
+
+function normalizeCategory(value) {
+    return String(value ?? "").trim();
+}
+
+function getCategoryName(category) {
+    if (typeof category === "string") {
+        return normalizeCategory(category);
+    }
+    return normalizeCategory(category?.name);
+}
+
+function getCategoryIcon(category) {
+    if (typeof category === "string") {
+        return "";
+    }
+    return String(category?.icon ?? "").trim();
+}
+
+function getCategoryColor(category) {
+    if (typeof category === "string") {
+        return "";
+    }
+    const color = String(category?.color ?? "").trim();
+    return /^#[0-9A-F]{6}$/i.test(color) ? color.toUpperCase() : "";
+}
+
+function buildCategoryBadgeStyle(color) {
+    return color
+        ? ` style="--category-color: ${escapeHtml(color)}; --category-color-soft: ${escapeHtml(color)}22; --category-color-border: ${escapeHtml(color)}55;"`
+        : "";
+}
+
+function applyCategoryBadgeStyles(root = document) {
+    for (const badge of root.querySelectorAll(".badge-category[data-category-color]")) {
+        const color = getCategoryColor({ color: badge.dataset.categoryColor });
+        if (!color) {
+            continue;
+        }
+        badge.style.setProperty("--category-color", color);
+        badge.style.setProperty("--category-color-soft", `${color}22`);
+        badge.style.setProperty("--category-color-border", `${color}55`);
+    }
+}
 
 function supportsBrowserNotifications() {
     return "Notification" in window;
@@ -73,16 +118,33 @@ function showBrowserNotification(item) {
     }
 }
 
+function renderNotificationTags(item) {
+    const badges = [`<span class="badge">${escapeHtml(item.source || "alert")}</span>`];
+    const category = normalizeCategory(item.category);
+    if (category) {
+        const categoryIcon = String(item.category_icon ?? "").trim();
+        const categoryColor = getCategoryColor({ color: item.category_color });
+        const iconMarkup = categoryIcon ? `<span class="badge-icon">${escapeHtml(categoryIcon)}</span>` : "";
+        badges.push(
+            `<span class="badge badge-category"${buildCategoryBadgeStyle(categoryColor)}>${iconMarkup}${escapeHtml(category)}</span>`
+        );
+    }
+    return badges.join("");
+}
+
 function renderNotificationCard(item) {
     const message = item.message ? `<p>${escapeHtml(item.message)}</p>` : "";
     const image = item.image
         ? `<img src="${escapeHtml(item.image)}" alt="Notification image for ${escapeHtml(item.title)}" loading="lazy">`
         : "";
+    const category = normalizeCategory(item.category);
 
     return `
-        <article class="panel notification-card" data-notification-id="${item.id}">
+        <article class="panel notification-card" data-notification-id="${item.id}" data-category="${escapeHtml(category)}">
             <div class="notification-meta">
-                <span class="badge">${escapeHtml(item.source || "alert")}</span>
+                <div class="notification-tags">
+                    ${renderNotificationTags(item)}
+                </div>
                 <time datetime="${escapeHtml(item.created_at)}">${escapeHtml(item.created_at)}</time>
             </div>
             <h2>${escapeHtml(item.title)}</h2>
@@ -90,6 +152,74 @@ function renderNotificationCard(item) {
             ${image}
         </article>
     `;
+}
+
+function renderEmptyState(selectedCategory) {
+    const category = normalizeCategory(selectedCategory);
+    const description = category && category !== ALL_CATEGORIES_VALUE
+        ? `No alerts found for the \"${escapeHtml(category)}\" category yet.`
+        : "Use the Home Assistant automation endpoint to start sending alerts.";
+
+    return `
+        <article class="panel empty-state">
+            <h2>No alerts yet</h2>
+            <p>${description}</p>
+        </article>
+    `;
+}
+
+function updateCategoryFilter(categories, selectedCategory) {
+    const filterNode = document.getElementById("category-filter");
+    if (!filterNode) {
+        return ALL_CATEGORIES_VALUE;
+    }
+
+    const seen = new Set();
+    const uniqueCategories = [];
+    for (const category of categories || []) {
+        const name = getCategoryName(category);
+        if (!name || seen.has(name)) {
+            continue;
+        }
+        seen.add(name);
+        uniqueCategories.push({
+            name,
+            icon: getCategoryIcon(category),
+            color: getCategoryColor(category),
+        });
+    }
+
+    const nextValue = uniqueCategories.some((category) => category.name === selectedCategory)
+        ? selectedCategory
+        : ALL_CATEGORIES_VALUE;
+    const fragment = document.createDocumentFragment();
+
+    const allOption = document.createElement("option");
+    allOption.value = ALL_CATEGORIES_VALUE;
+    allOption.textContent = "Show all notifications available";
+    fragment.appendChild(allOption);
+
+    for (const category of uniqueCategories) {
+        const option = document.createElement("option");
+        option.value = category.name;
+        option.textContent = `${category.icon ? `${category.icon} ` : ""}${category.name}`;
+        fragment.appendChild(option);
+    }
+
+    filterNode.replaceChildren(fragment);
+    filterNode.value = nextValue;
+    return nextValue;
+}
+
+function renderNotificationList(listNode, items, selectedCategory) {
+    const activeCategory = normalizeCategory(selectedCategory);
+    const filteredItems = activeCategory && activeCategory !== ALL_CATEGORIES_VALUE
+        ? items.filter((item) => normalizeCategory(item.category) === activeCategory)
+        : items;
+
+    listNode.innerHTML = filteredItems.length
+        ? filteredItems.map(renderNotificationCard).join("")
+        : renderEmptyState(activeCategory);
 }
 
 async function registerServiceWorker() {
@@ -195,6 +325,7 @@ function attachInstallPrompt() {
 
 async function startNotificationsPage() {
     const listNode = document.getElementById("notifications-list");
+    const categoryFilterNode = document.getElementById("category-filter");
     if (!listNode) {
         return;
     }
@@ -227,53 +358,58 @@ async function startNotificationsPage() {
     const pollInterval = Number(shellNode?.dataset.pollInterval || "20000");
     const initialDomLatest = Number(listNode.querySelector("[data-notification-id]")?.dataset.notificationId || "0");
     let latestNotificationId = Math.max(getStoredNotificationId(), initialDomLatest);
+    let selectedCategory = categoryFilterNode?.value || ALL_CATEGORIES_VALUE;
+    let notificationItems = [];
     if (latestNotificationId > 0) {
         setStoredNotificationId(latestNotificationId);
     }
 
-    const initialNotifications = Array.from(listNode.querySelectorAll("[data-notification-id]"));
-    if (!initialNotifications.length) {
-        try {
-            const payload = await fetchNotifications();
-            const items = payload.notifications || [];
-            if (items.length) {
-                latestNotificationId = Math.max(latestNotificationId, Number(items[0]?.id || "0"));
-                setStoredNotificationId(latestNotificationId);
-                listNode.innerHTML = items.map(renderNotificationCard).join("");
-            }
-        } catch (error) {
-            const statusNode = document.getElementById("notification-status");
-            if (statusNode) {
-                statusNode.textContent = `Live refresh warning: ${error.message}`;
-            }
+    const syncNotifications = (payload, notifyNewItems = false) => {
+        const items = Array.isArray(payload?.notifications) ? payload.notifications : [];
+        const categories = Array.isArray(payload?.categories) ? payload.categories : [];
+        const newestId = Number(items[0]?.id || "0");
+        const unseenItems = notifyNewItems
+            ? items
+                .filter((item) => Number(item.id || "0") > latestNotificationId)
+                .sort((left, right) => Number(left.id || "0") - Number(right.id || "0"))
+            : [];
+
+        notificationItems = items;
+        selectedCategory = updateCategoryFilter(categories, selectedCategory);
+        renderNotificationList(listNode, notificationItems, selectedCategory);
+        applyCategoryBadgeStyles(listNode);
+
+        if (newestId > 0) {
+            latestNotificationId = Math.max(latestNotificationId, newestId);
+            setStoredNotificationId(latestNotificationId);
+        }
+
+        for (const item of unseenItems) {
+            showBrowserNotification(item);
+        }
+    };
+
+    if (categoryFilterNode) {
+        categoryFilterNode.addEventListener("change", () => {
+            selectedCategory = categoryFilterNode.value || ALL_CATEGORIES_VALUE;
+            renderNotificationList(listNode, notificationItems, selectedCategory);
+        });
+    }
+
+    try {
+        const initialPayload = await fetchNotifications();
+        syncNotifications(initialPayload, false);
+    } catch (error) {
+        const statusNode = document.getElementById("notification-status");
+        if (statusNode) {
+            statusNode.textContent = `Live refresh warning: ${error.message}`;
         }
     }
 
     const refresh = async () => {
         try {
             const payload = await fetchNotifications();
-            const items = payload.notifications || [];
-            const newestId = Number(items[0]?.id || "0");
-            if (newestId && newestId !== latestNotificationId) {
-                const unseenItems = items
-                    .filter((item) => Number(item.id || "0") > latestNotificationId)
-                    .sort((left, right) => Number(left.id || "0") - Number(right.id || "0"));
-
-                latestNotificationId = newestId;
-                setStoredNotificationId(latestNotificationId);
-                listNode.innerHTML = items.length
-                    ? items.map(renderNotificationCard).join("")
-                    : `
-                        <article class="panel empty-state">
-                            <h2>No alerts yet</h2>
-                            <p>Use the Home Assistant automation endpoint to start sending notifications.</p>
-                        </article>
-                    `;
-
-                for (const item of unseenItems) {
-                    showBrowserNotification(item);
-                }
-            }
+            syncNotifications(payload, true);
         } catch (error) {
             const statusNode = document.getElementById("notification-status");
             if (statusNode) {
@@ -286,6 +422,7 @@ async function startNotificationsPage() {
 }
 
 window.addEventListener("load", () => {
+    applyCategoryBadgeStyles(document);
     void startNotificationsPage();
 });
 

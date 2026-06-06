@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+{% block title %}Categories · {{ app_name }}{% endblock %}
+{% block body %}
+<main class="app-shell">
+    <header class="topbar">
+        <div>
+            <p class="eyebrow">Logged in as {{ username }}</p>
+            <h1>Category management</h1>
+            <p class="muted">Create categories, then customize the icon and color used by the notifications feed.</p>
+        </div>
+        <div class="actions">
+            <a href="{{ url_for('notifications_page') }}" class="btn btn-secondary">Back to notifications</a>
+            <a href="{{ url_for('logout') }}" class="btn btn-ghost">Log out</a>
+        </div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <section class="flash-group stack-gap">
+                {% for category, message in messages %}
+                    <p class="flash {{ 'flash-success' if category == 'success' else 'flash-error' }}">{{ message }}</p>
+                {% endfor %}
+            </section>
+        {% endif %}
+    {% endwith %}
+
+    <section class="panel category-editor-panel">
+        <div class="section-heading">
+            <div>
+                <h2>Create category</h2>
+                <p class="muted">New categories are also auto-registered when ingested by the API.</p>
+            </div>
+        </div>
+        <form method="post" class="category-form-grid">
+            <input type="hidden" name="action" value="create">
+            <label>
+                Name
+                <input type="text" name="name" maxlength="64" placeholder="security" required>
+            </label>
+            <label>
+                Color
+                <input type="color" name="color" value="#38BDF8">
+            </label>
+            <label>
+                Icon
+                <input type="text" name="icon" maxlength="16" placeholder="🛡️">
+            </label>
+            <div class="category-form-actions">
+                <button type="submit" class="btn btn-primary">Save category</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="panel category-list-panel">
+        <div class="section-heading">
+            <div>
+                <h2>Registered categories</h2>
+                <p class="muted">Each category keeps its own badge styling and notification count.</p>
+            </div>
+        </div>
+
+        {% if categories %}
+            <div class="category-list">
+                {% for category in categories %}
+                    <article class="category-row">
+                        <div class="category-row-summary">
+                            <div class="notification-tags">
+                                <span class="badge badge-category" data-category-color="{{ category.color }}">
+                                    <span class="badge-icon">{{ category.icon }}</span>
+                                    {{ category.name }}
+                                </span>
+                            </div>
+                            <p class="muted">{{ category.notification_count }} notification{{ '' if category.notification_count == 1 else 's' }}</p>
+                        </div>
+                        <form method="post" class="category-form-grid category-row-form">
+                            <input type="hidden" name="action" value="update">
+                            <label>
+                                Name
+                                <input type="text" name="name" value="{{ category.name }}" readonly>
+                            </label>
+                            <label>
+                                Color
+                                <input type="color" name="color" value="{{ category.color }}">
+                            </label>
+                            <label>
+                                Icon
+                                <input type="text" name="icon" value="{{ category.icon }}" maxlength="16">
+                            </label>
+                            <div class="category-form-actions">
+                                <button type="submit" class="btn btn-secondary">Update</button>
+                            </div>
+                        </form>
+                    </article>
+                {% endfor %}
+            </div>
+        {% else %}
+            <article class="empty-state">
+                <h2>No categories yet</h2>
+                <p>Send a notification with a category or create one here to get started.</p>
+            </article>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}
+
+
+

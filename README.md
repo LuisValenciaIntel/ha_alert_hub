@@ -6,6 +6,8 @@ Installable mobile-friendly web app for Home Assistant alerts.
 
 - Login page with session-based authentication.
 - Notification feed with text and optional images.
+- Notification categories with an in-app category filter.
+- Dedicated category management page with custom colors and icons.
 - Home Assistant ingestion endpoint for alerts and camera snapshots.
 - Progressive Web App (PWA) support with manifest and service worker.
 - Browser notifications shown in the app after the user grants permission.
@@ -91,6 +93,8 @@ http://127.0.0.1:5000
 
 After logging in on your phone, tap **Enable browser notifications**. If your browser supports install prompts, tap **Install app** to add it to the home screen.
 
+To manage category appearance, open the **Manage categories** page from the notifications screen. Each category can have its own color and icon, and categories sent by the ingest API are auto-registered the first time they appear.
+
 Browser notifications are now delivered by the page itself when it polls for new alerts, so there is no `pywebpush` or VAPID setup required.
 
 ## Send alerts from Home Assistant
@@ -134,7 +138,7 @@ automation:
 curl -X POST http://127.0.0.1:5000/api/ingest ^
   -H "Content-Type: application/json" ^
   -H "Authorization: Bearer YOUR_TOKEN" ^
-  -d "{\"title\":\"Front Door\",\"message\":\"Motion detected\",\"source\":\"home-assistant\",\"image_url\":\"https://example.local/snapshot.jpg\"}"
+  -d "{\"title\":\"Front Door\",\"message\":\"Motion detected\",\"source\":\"home-assistant\",\"category\":\"security\",\"image_url\":\"https://example.local/snapshot.jpg\"}"
 ```
 
     When you send `image_url`, the backend downloads that image, saves it inside the LXC under `media/` with a custom filename, and the web page displays the saved local file.
@@ -145,7 +149,7 @@ curl -X POST http://127.0.0.1:5000/api/ingest ^
 curl -X POST http://127.0.0.1:5000/api/ingest ^
   -H "Content-Type: application/json" ^
   -H "Authorization: Bearer YOUR_TOKEN" ^
-  -d "{\"title\":\"Garage\",\"message\":\"Camera snapshot\",\"image_base64\":\"...base64 bytes...\",\"image_mime\":\"image/jpeg\"}"
+  -d "{\"title\":\"Garage\",\"message\":\"Camera snapshot\",\"category\":\"garage\",\"image_base64\":\"...base64 bytes...\",\"image_mime\":\"image/jpeg\"}"
 ```
 
 ### Home Assistant `rest_command` example
@@ -163,6 +167,7 @@ rest_command:
         "title": "{{ title }}",
         "message": "{{ message }}",
         "source": "home-assistant",
+        "category": "{{ category }}",
         "image_url": "{{ image_url }}"
       }
 ```
@@ -175,6 +180,7 @@ action:
     data:
       title: "Front door"
       message: "Motion detected"
+      category: "security"
       image_url: "https://YOUR_HA_HOST/local/snapshots/front-door.jpg"
 ```
 
@@ -194,7 +200,8 @@ rest_command:
       {
         "title": "{{ title }}",
         "message": "{{ message }}",
-        "source": "home-assistant"
+        "source": "home-assistant",
+        "category": "{{ category }}"
       }
 
 automation:
@@ -208,6 +215,7 @@ automation:
         data:
           title: "Washer"
           message: "Laundry cycle finished"
+          category: "appliances"
 ```
 
 ### Example B: Camera snapshot alert
@@ -227,6 +235,7 @@ rest_command:
         "title": "{{ title }}",
         "message": "{{ message }}",
         "source": "home-assistant",
+        "category": "{{ category }}",
         "image_url": "{{ image_url }}"
       }
 
@@ -247,6 +256,7 @@ automation:
         data:
           title: "Front door"
           message: "Motion detected"
+          category: "security"
           image_url: "https://YOUR_HA_HOST/local/snapshots/front-door-last.jpg"
 ```
 

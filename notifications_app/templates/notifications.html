@@ -12,6 +12,7 @@
             {% if home_assistant_trigger_ready %}
             <button type="button" id="trigger-home-assistant" class="btn btn-secondary" data-entity-id="{{ home_assistant_automation_entity_id }}">{{ home_assistant_button_label }}</button>
             {% endif %}
+            <a href="{{ url_for('categories_page') }}" class="btn btn-secondary">Manage categories</a>
             <button type="button" id="install-app" class="btn btn-secondary" hidden>Install app</button>
             <button type="button" id="enable-notifications" class="btn btn-primary">Enable browser notifications</button>
             <a href="{{ url_for('logout') }}" class="btn btn-ghost">Log out</a>
@@ -23,11 +24,33 @@
         <p id="home-assistant-status" class="muted"></p>
     </section>
 
+    <section class="panel filters-panel">
+        <label class="filter-control" for="category-filter">
+            <span>Filter by category</span>
+            <select id="category-filter" name="category_filter">
+                <option value="__all__">Show all notifications available</option>
+                {% for category in categories %}
+                    <option value="{{ category.name }}">{{ category.icon }} {{ category.name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+    </section>
+
     <section class="notifications-grid" id="notifications-list">
         {% for item in notifications %}
-            <article class="panel notification-card" data-notification-id="{{ item.id }}">
+            <article class="panel notification-card" data-notification-id="{{ item.id }}" data-category="{{ item.category or '' }}">
                 <div class="notification-meta">
-                    <span class="badge">{{ item.source }}</span>
+                    <div class="notification-tags">
+                        <span class="badge">{{ item.source }}</span>
+                        {% if item.category %}
+                            <span class="badge badge-category"{% if item.category_color %} data-category-color="{{ item.category_color }}"{% endif %}>
+                                {% if item.category_icon %}
+                                    <span class="badge-icon">{{ item.category_icon }}</span>
+                                {% endif %}
+                                {{ item.category }}
+                            </span>
+                        {% endif %}
+                    </div>
                     <time datetime="{{ item.created_at }}">{{ item.created_at }}</time>
                 </div>
                 <h2>{{ item.title }}</h2>

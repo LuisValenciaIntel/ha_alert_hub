@@ -5,6 +5,7 @@ import json
 import os
 import secrets
 import re
+import logging
 import uuid
 from functools import wraps
 from pathlib import Path
@@ -37,6 +38,7 @@ IMAGE_EXTENSIONS = {
     "image/gif": "gif",
 }
 MAX_IMAGE_DOWNLOAD_BYTES = 10 * 1024 * 1024
+LOGGER = logging.getLogger(__name__)
 
 
 def slugify_filename(value: str) -> str:
@@ -204,9 +206,13 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             if exc.fp is not None:
                 error_body = exc.read().decode("utf-8", errors="ignore").strip()
             detail = f": {error_body}" if error_body else ""
-            raise ValueError(f"Home Assistant returned HTTP {exc.code}{detail}") from exc
+            error_message = f"Home Assistant returned HTTP {exc.code}{detail}"
+            LOGGER.exception("Home Assistant automation trigger failed: %s", error_message)
+            raise ValueError(error_message) from exc
         except URLError as exc:
-            raise ValueError(f"Could not reach Home Assistant: {exc.reason}") from exc
+            error_message = f"Could not reach Home Assistant: {exc.reason}"
+            LOGGER.exception("Home Assistant automation trigger failed: %s", error_message)
+            raise ValueError(error_message) from exc
 
     def parse_image_base64(raw_value: str, mime_type: str | None) -> str:
         value = raw_value.strip()
@@ -222,6 +228,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         title = ""
         message = ""
         source = "home-assistant"
+        category = None
         image_path = None
         image_url = None
 
@@ -230,6 +237,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             title = str(payload.get("title") or payload.get("source") or "Home alert").strip()
             message = str(payload.get("message") or payload.get("text") or "").strip()
             source = str(payload.get("source") or "home-assistant").strip()
+            category = str(payload.get("category") or "").strip() or None
             image_url = str(payload.get("image_url") or "").strip() or None
             image_base64 = str(payload.get("image_base64") or "").strip()
             image_mime = str(payload.get("image_mime") or "").strip() or None
@@ -241,6 +249,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             title = str(request.form.get("title") or request.form.get("source") or "Home alert").strip()
             message = str(request.form.get("message") or request.form.get("text") or "").strip()
             source = str(request.form.get("source") or "home-assistant").strip()
+            category = str(request.form.get("category") or "").strip() or None
             image_url = str(request.form.get("image_url") or "").strip() or None
             image_file = request.files.get("image")
             if image_file and image_file.filename:
@@ -257,6 +266,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             "title": title,
             "message": message,
             "source": source,
+            "category": category,
             "image_path": image_path,
             "image_url": image_url,
         }
@@ -299,6 +309,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     @login_required
     def notifications_page():
         notifications = db.list_notifications(database_path)
+        categories = db.list_categories(database_path)
         automation_entity_id = str(app.config.get("HOME_ASSISTANT_AUTOMATION_ENTITY_ID", "")).strip()
         ha_trigger_ready = bool(
             str(app.config.get("HOME_ASSISTANT_BASE_URL", "")).strip()
@@ -308,6 +319,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         return render_template(
             "notifications.html",
             notifications=notifications,
+            categories=categories,
             username=session.get("username", ""),
             poll_interval_ms=int(app.config["POLL_INTERVAL_SECONDS"]) * 1000,
             home_assistant_button_label=str(app.config.get("HOME_ASSISTANT_BUTTON_LABEL", "Run Home Assistant automation")),
@@ -315,11 +327,53 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             home_assistant_automation_entity_id=automation_entity_id,
         )
 
+    @app.route("/categories", methods=["GET", "POST"])
+    @login_required
+    def categories_page():
+        if request.method == "POST":
+            action = str(request.form.get("action") or "").strip().lower()
+            try:
+                if action == "create":
+                    category = db.upsert_category(
+                        database_path,
+                        name=str(request.form.get("name") or ""),
+                        color=str(request.form.get("color") or ""),
+                        icon=str(request.form.get("icon") or ""),
+                    )
+                    flash(f"Category '{category['name']}' saved successfully.", "success")
+                elif action == "update":
+                    category = db.upsert_category(
+                        database_path,
+                        name=str(request.form.get("name") or ""),
+                        color=str(request.form.get("color") or ""),
+                        icon=str(request.form.get("icon") or ""),
+                    )
+                    flash(f"Category '{category['name']}' updated successfully.", "success")
+                else:
+                    raise ValueError("Unsupported category action")
+            except ValueError as exc:
+                flash(str(exc), "error")
+            return redirect(url_for("categories_page"))
+
+        return render_template(
+            "categories.html",
+            categories=db.list_categories(database_path),
+            username=session.get("username", ""),
+        )
+
     @app.get("/api/notifications")
     @login_required
     def api_notifications():
         limit = int(request.args.get("limit", 50))
-        return jsonify({"notifications": db.list_notifications(database_path, limit=limit)})
+        category = str(request.args.get("category") or "").strip() or None
+        categories = db.list_categories(database_path)
+        return jsonify(
+            {
+                "notifications": db.list_notifications(database_path, limit=limit, category=category),
+                "categories": categories,
+                "selected_category": category or "",
+            }
+        )
 
     @app.post("/api/home-assistant/trigger")
     @login_required
@@ -335,6 +389,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             trigger_home_assistant_automation(entity_id)
             return jsonify({"ok": True, "entity_id": entity_id}), 200
         except ValueError as exc:
+            LOGGER.exception("Home Assistant automation trigger request failed for entity_id=%s", entity_id)
             return jsonify({"ok": False, "error": str(exc)}), 400
 
     @app.post("/api/ingest")
