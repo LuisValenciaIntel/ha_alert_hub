@@ -167,6 +167,49 @@ class NotificationsPageTestCase(unittest.TestCase):
 		self.assertNotIn("Washer", html)
 		self.assertIn('<option value="security" selected>', html)
 
+	def test_notifications_page_renders_fullscreen_image_trigger_markup(self) -> None:
+		db.create_notification(
+			self.database_path,
+			title="Front Door",
+			message="Snapshot ready",
+			source="home-assistant",
+			image_url="https://example.local/snapshot.jpg",
+		)
+
+		self.login()
+		response = self.client.get("/notifications")
+		self.assertEqual(response.status_code, 200)
+		html = response.get_data(as_text=True)
+		self.assertIn('class="notification-image-button"', html)
+		self.assertIn('id="image-viewer"', html)
+		self.assertIn('data-image-src="https://example.local/snapshot.jpg"', html)
+
+	def test_home_assistant_trigger_error_includes_linux_docker_network_hint_for_localhost(self) -> None:
+		app = create_app(
+			{
+				"TESTING": True,
+				"SECRET_KEY": "test-secret",
+				"INSTANCE_PATH": self.instance_path / "trigger-instance",
+				"MEDIA_DIR": self.media_dir,
+				"HOME_ASSISTANT_API_TOKEN": "test-token",
+				"BOOTSTRAP_ADMIN_USERNAME": "admin",
+				"BOOTSTRAP_ADMIN_PASSWORD": "admin-pass",
+				"HOME_ASSISTANT_BASE_URL": "http://127.0.0.1:8123",
+				"HOME_ASSISTANT_ACCESS_TOKEN": "secret",
+				"HOME_ASSISTANT_AUTOMATION_ENTITY_ID": "automation.test",
+			}
+		)
+		client = app.test_client()
+		login_response = client.post("/login", data={"username": "admin", "password": "admin-pass"})
+		self.assertEqual(login_response.status_code, 302)
+
+		response = client.post("/api/home-assistant/trigger", json={"entity_id": "automation.test"})
+		self.assertEqual(response.status_code, 400)
+		payload = response.get_json()
+		self.assertIsNotNone(payload)
+		self.assertIn("127.0.0.1:8123", payload["error"])
+		self.assertIn("inside Docker means the container itself", payload["error"])
+
 	def test_category_management_page_renders_existing_categories(self) -> None:
 		db.upsert_category(self.database_path, name="garage", color="#654321", icon="")
 

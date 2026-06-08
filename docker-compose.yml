@@ -3,6 +3,9 @@ services:
     build:
       context: .
     container_name: home-alert-hub
+    # If Home Assistant runs on the same Linux host and is only reachable there,
+    # uncomment the next line and remove the ports mapping below:
+    # network_mode: host
     ports:
       - "5000:5000"
     extra_hosts:

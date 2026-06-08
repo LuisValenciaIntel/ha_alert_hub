@@ -60,7 +60,17 @@
                     <p>{{ item.message }}</p>
                 {% endif %}
                 {% if item.image %}
-                    <img src="{{ item.image }}" alt="Notification image for {{ item.title }}" loading="lazy">
+                    <button
+                        type="button"
+                        class="notification-image-button"
+                        data-image-src="{{ item.image }}"
+                        data-image-alt="Notification image for {{ item.title }}"
+                        data-image-caption="{{ item.title }}"
+                        aria-label="Open image fullscreen"
+                    >
+                        <img src="{{ item.image }}" alt="Notification image for {{ item.title }}" loading="lazy">
+                        <span class="sr-only">Open image fullscreen</span>
+                    </button>
                 {% endif %}
             </article>
         {% else %}
@@ -69,6 +79,15 @@
                 <p>Use the Home Assistant automation endpoint to start sending alerts.</p>
             </article>
         {% endfor %}
+    </section>
+
+    <section id="image-viewer" class="image-viewer" role="dialog" aria-modal="true" aria-hidden="true" hidden>
+        <button type="button" class="image-viewer-backdrop" data-image-viewer-close aria-label="Close image viewer"></button>
+        <figure class="image-viewer-content panel">
+            <button type="button" id="image-viewer-close" class="image-viewer-close btn btn-ghost" aria-label="Close image viewer">×</button>
+            <img id="image-viewer-image" src="" alt="">
+            <figcaption id="image-viewer-caption" class="muted"></figcaption>
+        </figure>
     </section>
 </main>
 {% endblock %}

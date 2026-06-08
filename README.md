@@ -97,6 +97,8 @@ To manage category appearance, open the **Manage categories** page from the noti
 
 Browser notifications are now delivered by the page itself when it polls for new alerts, so there is no `pywebpush` or VAPID setup required.
 
+Tap or click any notification image to open it in a fullscreen viewer. Press `Esc` or tap the dark backdrop / close button to dismiss it.
+
 ## Send alerts from Home Assistant
 
 Use the generated automation token as either `Authorization: Bearer <token>` or `X-API-Key: <token>`.
@@ -113,6 +115,33 @@ HOME_ASSISTANT_BUTTON_LABEL=Run camera automation
 ```
 
 Then the page will show a button that sends a request to Home Assistant and triggers the configured automation.
+
+### Linux Docker networking for the Home Assistant trigger
+
+If you run this app container on Linux, do not set `HOME_ASSISTANT_BASE_URL=http://localhost:8123` unless Home Assistant is running inside the same container. Inside Docker, `localhost` points to the container itself, not to your Linux host or another machine on your LAN.
+
+Use one of these instead:
+
+- the Home Assistant LAN IP, for example `http://192.168.1.50:8123`
+- a DNS name that the container can resolve on your local network
+- `network_mode: host` when both Home Assistant and this app run on the same Linux host and Home Assistant is only reachable there
+
+Recommended default on Linux:
+
+```env
+HOME_ASSISTANT_BASE_URL=http://YOUR_HOME_ASSISTANT_LAN_IP:8123
+```
+
+If Home Assistant runs on the same Linux host and you want the app container to share the host network, update `docker-compose.yml` like this:
+
+```yaml
+services:
+  home-alert-hub:
+    network_mode: host
+    # remove the ports: section when using host networking
+```
+
+When `network_mode: host` is enabled, the app listens directly on the Linux host network, so you should remove the published `ports:` mapping from Compose.
 
 Example Home Assistant service call that can be triggered:
 

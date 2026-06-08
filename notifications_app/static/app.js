@@ -135,7 +135,19 @@ function renderNotificationTags(item) {
 function renderNotificationCard(item) {
     const message = item.message ? `<p>${escapeHtml(item.message)}</p>` : "";
     const image = item.image
-        ? `<img src="${escapeHtml(item.image)}" alt="Notification image for ${escapeHtml(item.title)}" loading="lazy">`
+        ? `
+            <button
+                type="button"
+                class="notification-image-button"
+                data-image-src="${escapeHtml(item.image)}"
+                data-image-alt="Notification image for ${escapeHtml(item.title)}"
+                data-image-caption="${escapeHtml(item.title)}"
+                aria-label="Open image fullscreen"
+            >
+                <img src="${escapeHtml(item.image)}" alt="Notification image for ${escapeHtml(item.title)}" loading="lazy">
+                <span class="sr-only">Open image fullscreen</span>
+            </button>
+        `
         : "";
     const category = normalizeCategory(item.category);
 
@@ -240,6 +252,77 @@ function syncNotificationsPageUrl(selectedCategory) {
         url.searchParams.delete("category");
     }
     window.history.replaceState({}, "", url);
+}
+
+function closeImageViewer() {
+    const viewerNode = document.getElementById("image-viewer");
+    const imageNode = document.getElementById("image-viewer-image");
+    const captionNode = document.getElementById("image-viewer-caption");
+    if (!viewerNode || !imageNode || !captionNode) {
+        return;
+    }
+
+    viewerNode.hidden = true;
+    viewerNode.setAttribute("aria-hidden", "true");
+    imageNode.src = "";
+    imageNode.alt = "";
+    captionNode.textContent = "";
+    document.body.classList.remove("image-viewer-open");
+}
+
+function openImageViewer({ src, alt, caption }) {
+    const viewerNode = document.getElementById("image-viewer");
+    const imageNode = document.getElementById("image-viewer-image");
+    const captionNode = document.getElementById("image-viewer-caption");
+    const closeButtonNode = document.getElementById("image-viewer-close");
+    if (!viewerNode || !imageNode || !captionNode || !closeButtonNode || !src) {
+        return;
+    }
+
+    imageNode.src = src;
+    imageNode.alt = alt || "Notification image";
+    captionNode.textContent = caption || "";
+    viewerNode.hidden = false;
+    viewerNode.setAttribute("aria-hidden", "false");
+    document.body.classList.add("image-viewer-open");
+    closeButtonNode.focus();
+}
+
+function bindNotificationImageViewer(root = document) {
+    for (const triggerNode of root.querySelectorAll(".notification-image-button")) {
+        if (triggerNode.dataset.viewerBound === "true") {
+            continue;
+        }
+        triggerNode.dataset.viewerBound = "true";
+        triggerNode.addEventListener("click", () => {
+            openImageViewer({
+                src: triggerNode.dataset.imageSrc || "",
+                alt: triggerNode.dataset.imageAlt || "",
+                caption: triggerNode.dataset.imageCaption || "",
+            });
+        });
+    }
+}
+
+function attachImageViewer() {
+    const viewerNode = document.getElementById("image-viewer");
+    if (!viewerNode || viewerNode.dataset.viewerReady === "true") {
+        bindNotificationImageViewer(document);
+        return;
+    }
+
+    viewerNode.dataset.viewerReady = "true";
+    bindNotificationImageViewer(document);
+
+    for (const closeNode of viewerNode.querySelectorAll("[data-image-viewer-close]")) {
+        closeNode.addEventListener("click", closeImageViewer);
+    }
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            closeImageViewer();
+        }
+    });
 }
 
 async function registerServiceWorker() {
@@ -352,6 +435,7 @@ async function startNotificationsPage() {
     }
 
     attachInstallPrompt();
+    attachImageViewer();
     const haButton = document.getElementById("trigger-home-assistant");
     if (haButton) {
         haButton.addEventListener("click", triggerHomeAssistantAutomation);
@@ -399,6 +483,7 @@ async function startNotificationsPage() {
         selectedCategory = updateCategoryFilter(categories, selectedCategory);
         renderNotificationList(listNode, notificationItems, selectedCategory);
         applyCategoryBadgeStyles(listNode);
+        bindNotificationImageViewer(listNode);
 
         if (newestId > 0) {
             latestNotificationId = Math.max(latestNotificationId, newestId);

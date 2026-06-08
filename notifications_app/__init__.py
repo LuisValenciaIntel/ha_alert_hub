@@ -41,6 +41,22 @@ MAX_IMAGE_DOWNLOAD_BYTES = 10 * 1024 * 1024
 LOGGER = logging.getLogger(__name__)
 
 
+def build_home_assistant_network_hint(base_url: str) -> str:
+    parsed_url = urlparse(base_url)
+    hostname = (parsed_url.hostname or "").strip().lower()
+    if hostname in {"localhost", "127.0.0.1", "::1"}:
+        return (
+            " The configured Home Assistant URL points to localhost, which inside Docker means the container itself."
+            " On Linux, set HOME_ASSISTANT_BASE_URL to the real LAN IP or DNS name of your Home Assistant server,"
+            " or run the container with host networking if Home Assistant is on the same Linux host."
+        )
+    return (
+        " Verify that HOME_ASSISTANT_BASE_URL points to an address reachable from inside the container"
+        " such as your Home Assistant LAN IP or DNS name."
+        " If Home Assistant runs on the same Linux host, consider network_mode: host in Docker Compose."
+    )
+
+
 def slugify_filename(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return slug or "alert"
@@ -210,7 +226,10 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             LOGGER.exception("Home Assistant automation trigger failed: %s", error_message)
             raise ValueError(error_message) from exc
         except URLError as exc:
-            error_message = f"Could not reach Home Assistant: {exc.reason}"
+            error_message = (
+                f"Could not reach Home Assistant at {base_url}: {exc.reason}."
+                f"{build_home_assistant_network_hint(base_url)}"
+            )
             LOGGER.exception("Home Assistant automation trigger failed: %s", error_message)
             raise ValueError(error_message) from exc
 
