@@ -60,7 +60,7 @@ class NotificationsPageTestCase(unittest.TestCase):
 		payload = response.get_json()
 		self.assertIsNotNone(payload)
 		self.assertEqual(payload["notification"]["category"], "security")
-		self.assertEqual(payload["notification"]["category_icon"], "🛡️")
+		self.assertEqual(payload["notification"]["category_icon"], "️")
 		self.assertRegex(payload["notification"]["category_color"], r"^#[0-9A-F]{6}$")
 
 		self.login()
@@ -68,7 +68,7 @@ class NotificationsPageTestCase(unittest.TestCase):
 		self.assertEqual(response.status_code, 200)
 		payload = response.get_json()
 		self.assertEqual(payload["categories"][0]["name"], "security")
-		self.assertEqual(payload["categories"][0]["icon"], "🛡️")
+		self.assertEqual(payload["categories"][0]["icon"], "️")
 		self.assertEqual(payload["categories"][0]["notification_count"], 1)
 		self.assertEqual(payload["notifications"][0]["category"], "security")
 
@@ -111,29 +111,29 @@ class NotificationsPageTestCase(unittest.TestCase):
 		self.login()
 		response = self.client.post(
 			"/categories",
-			data={"action": "create", "name": "security", "color": "#123456", "icon": "🧯"},
+			data={"action": "create", "name": "security", "color": "#123456", "icon": ""},
 		)
 		self.assertEqual(response.status_code, 302)
 
 		created = db.get_category(self.database_path, "security")
 		self.assertIsNotNone(created)
 		self.assertEqual(created["color"], "#123456")
-		self.assertEqual(created["icon"], "🧯")
+		self.assertEqual(created["icon"], "")
 		self.assertEqual(created["notification_count"], 0)
 
 		response = self.client.post(
 			"/categories",
-			data={"action": "update", "name": "security", "color": "#654321", "icon": "🚨"},
+			data={"action": "update", "name": "security", "color": "#654321", "icon": ""},
 		)
 		self.assertEqual(response.status_code, 302)
 
 		updated = db.get_category(self.database_path, "security")
 		self.assertIsNotNone(updated)
 		self.assertEqual(updated["color"], "#654321")
-		self.assertEqual(updated["icon"], "🚨")
+		self.assertEqual(updated["icon"], "")
 
 	def test_notifications_page_renders_category_filter_options_and_management_link(self) -> None:
-		db.upsert_category(self.database_path, name="security", color="#123456", icon="🛡️")
+		db.upsert_category(self.database_path, name="security", color="#123456", icon="️")
 		response = self.client.post(
 			"/api/ingest",
 			headers={"Authorization": "Bearer test-token"},
@@ -147,11 +147,28 @@ class NotificationsPageTestCase(unittest.TestCase):
 		html = response.get_data(as_text=True)
 		self.assertIn("Show all notifications available", html)
 		self.assertIn('href="/categories"', html)
-		self.assertIn('<option value="security">🛡️ security</option>', html)
+		self.assertIn('<option value="security">️ security</option>', html)
 		self.assertIn('badge badge-category', html)
 
+	def test_notifications_page_can_render_only_the_selected_category(self) -> None:
+		for title, category in (("Front Door", "security"), ("Washer", "appliances")):
+			response = self.client.post(
+				"/api/ingest",
+				headers={"Authorization": "Bearer test-token"},
+				json={"title": title, "message": "Test", "category": category},
+			)
+			self.assertEqual(response.status_code, 201)
+
+		self.login()
+		response = self.client.get("/notifications?category=security")
+		self.assertEqual(response.status_code, 200)
+		html = response.get_data(as_text=True)
+		self.assertIn("Front Door", html)
+		self.assertNotIn("Washer", html)
+		self.assertIn('<option value="security" selected>', html)
+
 	def test_category_management_page_renders_existing_categories(self) -> None:
-		db.upsert_category(self.database_path, name="garage", color="#654321", icon="🚗")
+		db.upsert_category(self.database_path, name="garage", color="#654321", icon="")
 
 		self.login()
 		response = self.client.get("/categories")
@@ -160,7 +177,7 @@ class NotificationsPageTestCase(unittest.TestCase):
 		self.assertIn("Category management", html)
 		self.assertIn("Create category", html)
 		self.assertIn("garage", html)
-		self.assertIn("🚗", html)
+		self.assertIn("", html)
 
 	def test_init_db_migrates_existing_database_without_category_column(self) -> None:
 		legacy_db_path = self.instance_path / "legacy.db"
@@ -220,7 +237,7 @@ class NotificationsPageTestCase(unittest.TestCase):
 		db.init_db(legacy_db_path)
 		categories = db.list_categories(legacy_db_path)
 		self.assertEqual([item["name"] for item in categories], ["security"])
-		self.assertEqual(categories[0]["icon"], "🛡️")
+		self.assertEqual(categories[0]["icon"], "️")
 		self.assertEqual(categories[0]["notification_count"], 1)
 
 

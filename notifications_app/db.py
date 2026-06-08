@@ -21,7 +21,7 @@ CATEGORY_COLOR_PALETTE = [
     "#22D3EE",
     "#F97316",
 ]
-DEFAULT_CATEGORY_ICON = "🏷️"
+DEFAULT_CATEGORY_ICON = "️"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -115,23 +115,23 @@ def default_category_color(category: str | None) -> str:
 def default_category_icon(category: str | None) -> str:
     normalized = (normalize_category(category) or "").lower()
     icon_map = {
-        "security": "🛡️",
-        "garage": "🚗",
-        "car": "🚗",
-        "maintenance": "🔧",
+        "security": "️",
+        "garage": "",
+        "car": "",
+        "maintenance": "",
         "weather": "☁️",
-        "camera": "🎥",
-        "motion": "👀",
-        "door": "🚪",
-        "alarm": "🚨",
-        "water": "💧",
-        "washer": "🧺",
-        "laundry": "🧺",
-        "package": "📦",
-        "delivery": "📦",
+        "camera": "",
+        "motion": "",
+        "door": "",
+        "alarm": "",
+        "water": "",
+        "washer": "",
+        "laundry": "",
+        "package": "",
+        "delivery": "",
         "energy": "⚡",
         "power": "⚡",
-        "family": "👨‍👩‍👧",
+        "family": "‍‍",
     }
     for keyword, icon in icon_map.items():
         if keyword in normalized:
@@ -158,9 +158,11 @@ def resolve_category_color(color: str | None, category: str | None) -> str | Non
 
 
 def validate_category_icon(icon: str | None, category: str | None) -> str:
-    value = str(icon or "").strip()
-    if not value:
+    if icon is None:
         return default_category_icon(category)
+    value = str(icon).strip()
+    if not value:
+        return ""
     if len(value) > 16:
         raise ValueError("Category icon must be 16 characters or fewer")
     return value
@@ -169,8 +171,10 @@ def validate_category_icon(icon: str | None, category: str | None) -> str:
 def resolve_category_icon(icon: str | None, category: str | None) -> str | None:
     if normalize_category(category) is None:
         return None
-    value = str(icon or "").strip()
-    return value[:16] if value else default_category_icon(category)
+    if icon is None:
+        return default_category_icon(category)
+    value = str(icon).strip()
+    return value[:16] if value else ""
 
 
 def ensure_category_record(connection: sqlite3.Connection, category: str) -> None:

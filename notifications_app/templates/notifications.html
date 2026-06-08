@@ -25,15 +25,17 @@
     </section>
 
     <section class="panel filters-panel">
-        <label class="filter-control" for="category-filter">
-            <span>Filter by category</span>
-            <select id="category-filter" name="category_filter">
-                <option value="__all__">Show all notifications available</option>
-                {% for category in categories %}
-                    <option value="{{ category.name }}">{{ category.icon }} {{ category.name }}</option>
-                {% endfor %}
-            </select>
-        </label>
+        <form id="category-filter-form" method="get" action="{{ url_for('notifications_page') }}">
+            <label class="filter-control" for="category-filter">
+                <span>Filter by category</span>
+                <select id="category-filter" name="category">
+                    <option value="__all__"{% if not selected_category %} selected{% endif %}>Show all notifications available</option>
+                    {% for category in categories %}
+                        <option value="{{ category.name }}"{% if selected_category == category.name %} selected{% endif %}>{{ category.icon }} {{ category.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </form>
     </section>
 
     <section class="notifications-grid" id="notifications-list">

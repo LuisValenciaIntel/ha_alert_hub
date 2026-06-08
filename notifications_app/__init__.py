@@ -308,7 +308,8 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     @app.get("/notifications")
     @login_required
     def notifications_page():
-        notifications = db.list_notifications(database_path)
+        selected_category = str(request.args.get("category") or "").strip() or None
+        notifications = db.list_notifications(database_path, category=selected_category)
         categories = db.list_categories(database_path)
         automation_entity_id = str(app.config.get("HOME_ASSISTANT_AUTOMATION_ENTITY_ID", "")).strip()
         ha_trigger_ready = bool(
@@ -320,6 +321,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             "notifications.html",
             notifications=notifications,
             categories=categories,
+            selected_category=selected_category or "",
             username=session.get("username", ""),
             poll_interval_ms=int(app.config["POLL_INTERVAL_SECONDS"]) * 1000,
             home_assistant_button_label=str(app.config.get("HOME_ASSISTANT_BUTTON_LABEL", "Run Home Assistant automation")),

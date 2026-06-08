@@ -222,6 +222,26 @@ function renderNotificationList(listNode, items, selectedCategory) {
         : renderEmptyState(activeCategory);
 }
 
+function buildNotificationsApiUrl(selectedCategory) {
+    const url = new URL("/api/notifications", window.location.origin);
+    const category = normalizeCategory(selectedCategory);
+    if (category && category !== ALL_CATEGORIES_VALUE) {
+        url.searchParams.set("category", category);
+    }
+    return url;
+}
+
+function syncNotificationsPageUrl(selectedCategory) {
+    const url = new URL(window.location.href);
+    const category = normalizeCategory(selectedCategory);
+    if (category && category !== ALL_CATEGORIES_VALUE) {
+        url.searchParams.set("category", category);
+    } else {
+        url.searchParams.delete("category");
+    }
+    window.history.replaceState({}, "", url);
+}
+
 async function registerServiceWorker() {
     if (!("serviceWorker" in navigator)) {
         return null;
@@ -229,8 +249,8 @@ async function registerServiceWorker() {
     return navigator.serviceWorker.register("/service-worker.js");
 }
 
-async function fetchNotifications() {
-    const response = await fetch("/api/notifications", { headers: { Accept: "application/json" } });
+async function fetchNotifications(selectedCategory) {
+    const response = await fetch(buildNotificationsApiUrl(selectedCategory), { headers: { Accept: "application/json" } });
     if (!response.ok) {
         throw new Error("Could not refresh notifications");
     }
@@ -326,6 +346,7 @@ function attachInstallPrompt() {
 async function startNotificationsPage() {
     const listNode = document.getElementById("notifications-list");
     const categoryFilterNode = document.getElementById("category-filter");
+    const categoryFilterForm = document.getElementById("category-filter-form");
     if (!listNode) {
         return;
     }
@@ -358,7 +379,7 @@ async function startNotificationsPage() {
     const pollInterval = Number(shellNode?.dataset.pollInterval || "20000");
     const initialDomLatest = Number(listNode.querySelector("[data-notification-id]")?.dataset.notificationId || "0");
     let latestNotificationId = Math.max(getStoredNotificationId(), initialDomLatest);
-    let selectedCategory = categoryFilterNode?.value || ALL_CATEGORIES_VALUE;
+    let selectedCategory = normalizeCategory(categoryFilterNode?.value) || ALL_CATEGORIES_VALUE;
     let notificationItems = [];
     if (latestNotificationId > 0) {
         setStoredNotificationId(latestNotificationId);
@@ -391,13 +412,18 @@ async function startNotificationsPage() {
 
     if (categoryFilterNode) {
         categoryFilterNode.addEventListener("change", () => {
-            selectedCategory = categoryFilterNode.value || ALL_CATEGORIES_VALUE;
-            renderNotificationList(listNode, notificationItems, selectedCategory);
+            selectedCategory = normalizeCategory(categoryFilterNode.value) || ALL_CATEGORIES_VALUE;
+            syncNotificationsPageUrl(selectedCategory);
+            if (!window.fetch && categoryFilterForm) {
+                categoryFilterForm.submit();
+                return;
+            }
+            void refresh(false);
         });
     }
 
     try {
-        const initialPayload = await fetchNotifications();
+        const initialPayload = await fetchNotifications(selectedCategory);
         syncNotifications(initialPayload, false);
     } catch (error) {
         const statusNode = document.getElementById("notification-status");
@@ -406,19 +432,22 @@ async function startNotificationsPage() {
         }
     }
 
-    const refresh = async () => {
+    async function refresh(notifyNewItems = true) {
         try {
-            const payload = await fetchNotifications();
-            syncNotifications(payload, true);
+            const payload = await fetchNotifications(selectedCategory);
+            syncNotificationsPageUrl(selectedCategory);
+            syncNotifications(payload, notifyNewItems);
         } catch (error) {
             const statusNode = document.getElementById("notification-status");
             if (statusNode) {
                 statusNode.textContent = `Live refresh warning: ${error.message}`;
             }
         }
-    };
+    }
 
-    window.setInterval(refresh, pollInterval);
+    window.setInterval(() => {
+        void refresh(true);
+    }, pollInterval);
 }
 
 window.addEventListener("load", () => {
