@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 from pathlib import Path
 
@@ -40,6 +41,11 @@ def main(argv: list[str] | None = None) -> int:
         args,
         "debug",
         os.getenv("FLASK_DEBUG", "false").lower() in {"1", "true", "yes", "on"},
+    )
+
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
     if command == "serve":
