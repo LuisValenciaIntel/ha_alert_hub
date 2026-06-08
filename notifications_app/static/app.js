@@ -10,6 +10,13 @@ function escapeHtml(value) {
 const LAST_NOTIFICATION_ID_KEY = "home-alert-hub:last-notification-id";
 const ALL_CATEGORIES_VALUE = "__all__";
 
+function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const normalized = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = window.atob(normalized);
+    return Uint8Array.from(rawData, (character) => character.charCodeAt(0));
+}
+
 function normalizeCategory(value) {
     return String(value ?? "").trim();
 }
@@ -58,6 +65,12 @@ function supportsBrowserNotifications() {
     return "Notification" in window;
 }
 
+function supportsWebPush() {
+    return supportsBrowserNotifications()
+        && "serviceWorker" in navigator
+        && "PushManager" in window;
+}
+
 function getStoredNotificationId() {
     return Number(window.localStorage.getItem(LAST_NOTIFICATION_ID_KEY) || "0");
 }
@@ -88,7 +101,7 @@ function setHomeAssistantStatus(message, isError = false) {
     }
 }
 
-function showBrowserNotification(item) {
+async function showBrowserNotification(item) {
     if (!supportsBrowserNotifications() || Notification.permission !== "granted") {
         return;
     }
@@ -100,12 +113,28 @@ function showBrowserNotification(item) {
         image: item.image || undefined,
         tag: `alert-${item.id}`,
         renotify: true,
+        vibrate: [200, 100, 200],
         data: {
             url: "/notifications",
             notificationId: item.id,
         },
     };
 
+    // Prefer service-worker showNotification: works reliably in PWA standalone
+    // mode and on browsers that disallow new Notification() from page context.
+    if ("serviceWorker" in navigator) {
+        try {
+            const registration = await navigator.serviceWorker.getRegistration("/service-worker.js");
+            if (registration) {
+                await registration.showNotification(item.title || "New alert", options);
+                return;
+            }
+        } catch (_err) {
+            // fall through to direct Notification API
+        }
+    }
+
+    // Fallback: direct Notification constructor (PC without service worker).
     try {
         const notification = new Notification(item.title || "New alert", options);
         notification.onclick = () => {
@@ -116,6 +145,59 @@ function showBrowserNotification(item) {
     } catch (error) {
         console.warn("Could not display browser notification", error);
     }
+}
+
+async function fetchPushConfig() {
+    const response = await fetch("/api/push/config", { headers: { Accept: "application/json" } });
+    if (!response.ok) {
+        throw new Error("Could not load push configuration");
+    }
+    return response.json();
+}
+
+async function subscribeServiceWorkerPush(registration, applicationServerKey) {
+    const existingSubscription = await registration.pushManager.getSubscription();
+    if (existingSubscription) {
+        return existingSubscription;
+    }
+    return registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(applicationServerKey),
+    });
+}
+
+async function savePushSubscription(subscription) {
+    const response = await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(subscription),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Could not save push subscription");
+    }
+}
+
+async function removePushSubscription(subscription) {
+    const response = await fetch("/api/push/unsubscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: subscription?.endpoint || "" }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Could not remove push subscription");
+    }
+}
+
+async function syncPushSubscription(registration, pushConfig) {
+    if (!pushConfig?.enabled || !pushConfig?.public_key) {
+        throw new Error("Web push is not enabled on the server. Configure PUBLIC_BASE_URL with your HTTPS URL.");
+    }
+
+    const subscription = await subscribeServiceWorkerPush(registration, pushConfig.public_key);
+    await savePushSubscription(subscription.toJSON());
+    return subscription;
 }
 
 function renderNotificationTags(item) {
@@ -380,25 +462,55 @@ async function triggerHomeAssistantAutomation() {
 
 async function enableNotifications() {
     if (!supportsBrowserNotifications()) {
-        setNotificationStatus("Browser notifications are not supported on this device/browser.", "Notifications unavailable", true);
+        setNotificationStatus(
+            "Notifications are not supported on this device/browser.",
+            "Notifications unavailable", true
+        );
         return;
     }
 
     try {
         const permission = await Notification.requestPermission();
-        if (permission === "granted") {
-            setNotificationStatus("Browser notifications are enabled.", "Notifications enabled", true);
-            return;
-        }
 
         if (permission === "denied") {
-            setNotificationStatus("Browser notifications were blocked in the browser settings. Please allow notifications for this site, then tap the button again.", "Notifications blocked", true);
+            setNotificationStatus(
+                "Notifications are blocked. Allow notifications for this site in browser settings, then try again.",
+                "Notifications blocked", true
+            );
             return;
         }
 
-        setNotificationStatus("Browser notification permission was not granted. No push subscription is required anymore.", "Enable notifications", false);
+        if (permission !== "granted") {
+            setNotificationStatus("Notification permission was not granted.", "Enable notifications", false);
+            return;
+        }
+
+        // Permission granted — attempt server-side web push (works in background / PWA).
+        if (supportsWebPush()) {
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                const pushConfig = await fetchPushConfig();
+                if (pushConfig?.enabled && pushConfig?.public_key) {
+                    await syncPushSubscription(registration, pushConfig);
+                    setNotificationStatus(
+                        "Push notifications are enabled. You'll be notified even when this tab is closed.",
+                        "Push enabled ✓", true
+                    );
+                    return;
+                }
+            } catch (err) {
+                // Server push not available or subscription failed — fall through to polling mode.
+                console.warn("Web push subscription failed, using polling mode:", err.message);
+            }
+        }
+
+        // Polling mode: notifications fire while the page is open (works on PC, no server push required).
+        setNotificationStatus(
+            "Notifications are enabled. Keep this tab open to receive alerts.",
+            "Notifications enabled", true
+        );
     } catch (error) {
-        setNotificationStatus(`Browser notification status: ${error.message}`, "Enable notifications", false);
+        setNotificationStatus(`Notification setup error: ${error.message}`, "Enable notifications", false);
     }
 }
 
@@ -430,6 +542,7 @@ async function startNotificationsPage() {
     const listNode = document.getElementById("notifications-list");
     const categoryFilterNode = document.getElementById("category-filter");
     const categoryFilterForm = document.getElementById("category-filter-form");
+    const shellNode = document.querySelector(".app-shell");
     if (!listNode) {
         return;
     }
@@ -447,19 +560,94 @@ async function startNotificationsPage() {
 
     await registerServiceWorker();
 
-    if (supportsBrowserNotifications()) {
+    // Track whether a push subscription is active so polling notifications
+    // can defer to the service worker when server push is in use.
+    let hasPushSubscription = false;
+
+    // Initialise notification status and auto-sync push subscription on page load.
+    if (supportsWebPush()) {
+        try {
+            const registration = await navigator.serviceWorker.ready;
+            const existingSubscription = await registration.pushManager.getSubscription();
+            hasPushSubscription = existingSubscription !== null;
+            const shellPushEnabled = shellNode?.dataset.webPushEnabled === "true";
+
+            if (Notification.permission === "granted" && shellPushEnabled) {
+                const pushConfig = await fetchPushConfig();
+                await syncPushSubscription(registration, pushConfig);
+                hasPushSubscription = true;
+            }
+
+            if (Notification.permission === "granted" && hasPushSubscription) {
+                setNotificationStatus(
+                    "Push notifications are enabled. You'll be notified even when this tab is closed.",
+                    "Push enabled ✓", true
+                );
+            } else if (Notification.permission === "granted") {
+                setNotificationStatus(
+                    "Notifications are enabled (polling). Keep this tab open to receive alerts.",
+                    "Notifications enabled", true
+                );
+            } else if (Notification.permission === "denied") {
+                setNotificationStatus(
+                    "Notifications are blocked. Allow notifications in browser settings.",
+                    "Notifications blocked", true
+                );
+            } else {
+                setNotificationStatus(
+                    "Enable notifications to get alerts on this device.",
+                    "Enable notifications", false
+                );
+            }
+        } catch (error) {
+            if (Notification.permission === "granted") {
+                setNotificationStatus(
+                    "Notifications are enabled (polling). Keep this tab open to receive alerts.",
+                    "Notifications enabled", true
+                );
+            } else {
+                setNotificationStatus(`Notification setup: ${error.message}`, "Enable notifications", false);
+            }
+        }
+    } else if (supportsBrowserNotifications()) {
+        // Browser has Notification API but no service worker / PushManager (old browser or http).
         if (Notification.permission === "granted") {
-            setNotificationStatus("Browser notifications are enabled.", "Notifications enabled", true);
+            setNotificationStatus(
+                "Notifications are enabled (polling). Keep this tab open to receive alerts.",
+                "Notifications enabled", true
+            );
         } else if (Notification.permission === "denied") {
-            setNotificationStatus("Browser notifications were blocked in the browser settings.", "Notifications blocked", true);
+            setNotificationStatus("Notifications are blocked in browser settings.", "Notifications blocked", true);
         } else {
-            setNotificationStatus("Browser notifications are off. Tap the button to enable them.", "Enable notifications", false);
+            setNotificationStatus("Enable notifications to get alerts on this device.", "Enable notifications", false);
         }
     } else {
-        setNotificationStatus("Browser notifications are not supported on this device/browser.", "Notifications unavailable", true);
+        setNotificationStatus("Notifications are not supported on this device/browser.", "Notifications unavailable", true);
     }
 
-    const shellNode = document.querySelector(".app-shell");
+    // Re-subscribe automatically when the browser invalidates the push subscription
+    // (e.g. after a browser update or OS-level permission revoke + re-grant).
+    if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.addEventListener("message", async (event) => {
+            if (event.data?.type === "pushsubscriptionchange") {
+                try {
+                    const registration = await navigator.serviceWorker.ready;
+                    const pushConfig = await fetchPushConfig();
+                    if (pushConfig?.enabled && pushConfig?.public_key) {
+                        await syncPushSubscription(registration, pushConfig);
+                        hasPushSubscription = true;
+                        setNotificationStatus(
+                            "Push notifications are enabled. You'll be notified even when this tab is closed.",
+                            "Push enabled ✓", true
+                        );
+                    }
+                } catch (err) {
+                    console.warn("Failed to re-subscribe after pushsubscriptionchange:", err.message);
+                }
+            }
+        });
+    }
+
     const pollInterval = Number(shellNode?.dataset.pollInterval || "20000");
     const initialDomLatest = Number(listNode.querySelector("[data-notification-id]")?.dataset.notificationId || "0");
     let latestNotificationId = Math.max(getStoredNotificationId(), initialDomLatest);
@@ -491,7 +679,9 @@ async function startNotificationsPage() {
         }
 
         for (const item of unseenItems) {
-            showBrowserNotification(item);
+            if (Notification.permission === "granted") {
+                showBrowserNotification(item);
+            }
         }
     };
 
