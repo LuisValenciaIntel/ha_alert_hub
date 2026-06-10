@@ -1,7 +1,13 @@
 {% extends 'base.html' %}
 {% block title %}Notifications · {{ app_name }}{% endblock %}
 {% block body %}
-<main class="app-shell" data-poll-interval="{{ poll_interval_ms }}">
+<main
+    class="app-shell"
+    data-poll-interval="{{ poll_interval_ms }}"
+    data-web-push-enabled="{{ 'true' if web_push_enabled else 'false' }}"
+    data-vapid-public-key="{{ vapid_public_key }}"
+    data-public-base-url="{{ public_base_url }}"
+>
     <header class="topbar">
         <div>
             <p class="eyebrow">Logged in as {{ username }}</p>

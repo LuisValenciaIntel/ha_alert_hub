@@ -1,4 +1,6 @@
 Flask>=3.0.0
+cryptography>=42.0.0
+pywebpush>=2.0.3
 setuptools>=70.0.0
 
 
