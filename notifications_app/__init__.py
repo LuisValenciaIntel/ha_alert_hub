@@ -28,6 +28,7 @@ from flask import (
 )
 
 from . import db
+from . import webpush
 
 DEFAULT_APP_NAME = "Home Alert Hub"
 IMAGE_EXTENSIONS = {
@@ -137,6 +138,20 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             f"[notifications_page] Automation token generated and stored at {token_info['token_file']}"
         )
 
+    public_base_url = str(app.config.get("PUBLIC_BASE_URL", "")).strip().rstrip("/")
+    vapid_subject = public_base_url or "mailto:admin@localhost"
+    vapid_keys = webpush.ensure_vapid_keys(resolved_instance_path, vapid_subject)
+    app.config["WEB_PUSH_ENABLED"] = bool(public_base_url)
+    app.config["VAPID_PUBLIC_KEY"] = vapid_keys["public_key"]
+    app.config["VAPID_PRIVATE_KEY_PATH"] = vapid_keys["private_key_path"]
+    app.config["VAPID_SUBJECT"] = vapid_keys["subject"]
+
+    if not app.config["WEB_PUSH_ENABLED"]:
+        LOGGER.warning(
+            "Web push is disabled because PUBLIC_BASE_URL is not configured. "
+            "Set PUBLIC_BASE_URL to your final HTTPS URL to enable Android and desktop push notifications."
+        )
+
     def login_required(view):
         @wraps(view)
         def wrapped_view(*args, **kwargs):
@@ -179,6 +194,54 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         image_path.write_bytes(content)
         return filename
 
+    def build_push_payload(notification: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "title": notification.get("title") or "New alert",
+            "body": notification.get("message") or "A new Home Assistant notification is available.",
+            "icon": url_for("static", filename="icons/icon-192.svg", _external=True),
+            "badge": url_for("static", filename="icons/badge.svg", _external=True),
+            "image": notification.get("image") or None,
+            "tag": f"alert-{notification.get('id')}",
+            "url": url_for("notifications_page", _external=True),
+            "notificationId": notification.get("id"),
+            "category": notification.get("category") or "",
+        }
+
+    def push_notifications_ready() -> bool:
+        return bool(
+            app.config.get("WEB_PUSH_ENABLED")
+            and app.config.get("VAPID_PUBLIC_KEY")
+            and app.config.get("VAPID_PRIVATE_KEY_PATH")
+            and app.config.get("VAPID_SUBJECT")
+        )
+
+    def send_push_notifications(notification: dict[str, Any]) -> dict[str, int]:
+        if not push_notifications_ready():
+            return {"sent": 0, "removed": 0, "failed": 0}
+
+        results = {"sent": 0, "removed": 0, "failed": 0}
+        payload = build_push_payload(notification)
+        for subscription in db.list_subscriptions(database_path):
+            endpoint = str(subscription.get("endpoint") or "").strip()
+            if not endpoint:
+                continue
+            try:
+                delivered = webpush.send_web_push(
+                    subscription_info=subscription,
+                    vapid_private_key_path=str(app.config["VAPID_PRIVATE_KEY_PATH"]),
+                    vapid_subject=str(app.config["VAPID_SUBJECT"]),
+                    payload=payload,
+                )
+                if delivered:
+                    results["sent"] += 1
+                else:
+                    db.delete_subscription(database_path, endpoint)
+                    results["removed"] += 1
+            except Exception:
+                LOGGER.exception("Failed to send web push notification to endpoint=%s", endpoint)
+                results["failed"] += 1
+        return results
+
     def download_image_from_url(image_url: str, title: str) -> str:
         try:
             request_headers = {"User-Agent": "Home-Alert-Hub/1.0"}
@@ -203,7 +266,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         if not entity_id.strip():
             raise ValueError("Home Assistant automation entity_id is required")
 
-        endpoint = f"{base_url}/api/services/automation/trigger"
+        endpoint = f"{base_url}/api/services/script/turn_on"
         payload = json.dumps({"entity_id": entity_id.strip()}, separators=(",", ":")).encode("utf-8")
         request_headers = {
             "Authorization": f"Bearer {access_token}",
@@ -346,6 +409,9 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             home_assistant_button_label=str(app.config.get("HOME_ASSISTANT_BUTTON_LABEL", "Run Home Assistant automation")),
             home_assistant_trigger_ready=ha_trigger_ready,
             home_assistant_automation_entity_id=automation_entity_id,
+            web_push_enabled=push_notifications_ready(),
+            vapid_public_key=str(app.config.get("VAPID_PUBLIC_KEY", "")),
+            public_base_url=public_base_url,
         )
 
     @app.route("/categories", methods=["GET", "POST"])
@@ -396,6 +462,40 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             }
         )
 
+    @app.get("/api/push/config")
+    @login_required
+    def api_push_config():
+        return jsonify(
+            {
+                "enabled": push_notifications_ready(),
+                "public_key": str(app.config.get("VAPID_PUBLIC_KEY", "")) if push_notifications_ready() else "",
+                "public_base_url": public_base_url,
+            }
+        )
+
+    @app.post("/api/push/subscribe")
+    @login_required
+    def api_push_subscribe():
+        if not push_notifications_ready():
+            return jsonify({"ok": False, "error": "Web push is not enabled. Configure PUBLIC_BASE_URL with your HTTPS URL."}), 400
+
+        subscription = request.get_json(silent=True) or {}
+        try:
+            db.upsert_subscription(database_path, subscription)
+            return jsonify({"ok": True}), 201
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/push/unsubscribe")
+    @login_required
+    def api_push_unsubscribe():
+        subscription = request.get_json(silent=True) or {}
+        endpoint = str(subscription.get("endpoint") or "").strip()
+        if not endpoint:
+            return jsonify({"ok": False, "error": "Subscription endpoint is required"}), 400
+        db.delete_subscription(database_path, endpoint)
+        return jsonify({"ok": True}), 200
+
     @app.post("/api/home-assistant/trigger")
     @login_required
     def api_home_assistant_trigger():
@@ -419,7 +519,8 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         try:
             payload = extract_notification_request()
             notification = db.create_notification(database_path, **payload)
-            return jsonify({"ok": True, "notification": notification}), 201
+            push_results = send_push_notifications(notification)
+            return jsonify({"ok": True, "notification": notification, "push": push_results}), 201
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
